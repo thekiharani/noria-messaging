@@ -1,5 +1,10 @@
 from .gateways import META_GRAPH_API_VERSION, META_GRAPH_BASE_URL, MetaWhatsAppGateway
-from .gateways.base import AsyncWhatsAppGateway, WhatsAppGateway
+from .gateways.base import (
+    AsyncWhatsAppGateway,
+    AsyncWhatsAppTemplateManagementGateway,
+    WhatsAppGateway,
+    WhatsAppTemplateManagementGateway,
+)
 from .models import (
     WhatsAppCatalogMessageRequest,
     WhatsAppContact,
@@ -23,6 +28,7 @@ from .models import (
     WhatsAppInteractiveRow,
     WhatsAppInteractiveSection,
     WhatsAppLocationRequest,
+    WhatsAppManagedTemplate,
     WhatsAppMediaDeleteResult,
     WhatsAppMediaInfo,
     WhatsAppMediaRequest,
@@ -35,9 +41,19 @@ from .models import (
     WhatsAppReactionRequest,
     WhatsAppSendReceipt,
     WhatsAppSendResult,
+    WhatsAppTemplateButtonDefinition,
     WhatsAppTemplateComponent,
+    WhatsAppTemplateComponentDefinition,
+    WhatsAppTemplateCreateRequest,
+    WhatsAppTemplateDeleteRequest,
+    WhatsAppTemplateDeleteResult,
+    WhatsAppTemplateListRequest,
+    WhatsAppTemplateListResult,
+    WhatsAppTemplateListSummary,
+    WhatsAppTemplateMutationResult,
     WhatsAppTemplateParameter,
     WhatsAppTemplateRequest,
+    WhatsAppTemplateUpdateRequest,
     WhatsAppTextRequest,
 )
 from .service import AsyncWhatsAppService, WhatsAppService
@@ -45,6 +61,7 @@ from .service import AsyncWhatsAppService, WhatsAppService
 __all__ = [
     "AsyncWhatsAppGateway",
     "AsyncWhatsAppService",
+    "AsyncWhatsAppTemplateManagementGateway",
     "META_GRAPH_API_VERSION",
     "META_GRAPH_BASE_URL",
     "MetaWhatsAppGateway",
@@ -60,6 +77,7 @@ __all__ = [
     "WhatsAppFlowActionType",
     "WhatsAppFlowMessageRequest",
     "WhatsAppGateway",
+    "WhatsAppManagedTemplate",
     "WhatsAppInboundLocation",
     "WhatsAppInboundMedia",
     "WhatsAppInboundMessage",
@@ -84,8 +102,19 @@ __all__ = [
     "WhatsAppSendReceipt",
     "WhatsAppSendResult",
     "WhatsAppService",
+    "WhatsAppTemplateButtonDefinition",
+    "WhatsAppTemplateComponentDefinition",
+    "WhatsAppTemplateCreateRequest",
+    "WhatsAppTemplateDeleteRequest",
+    "WhatsAppTemplateDeleteResult",
+    "WhatsAppTemplateListRequest",
+    "WhatsAppTemplateListResult",
+    "WhatsAppTemplateListSummary",
+    "WhatsAppTemplateManagementGateway",
+    "WhatsAppTemplateMutationResult",
     "WhatsAppTemplateComponent",
     "WhatsAppTemplateParameter",
     "WhatsAppTemplateRequest",
+    "WhatsAppTemplateUpdateRequest",
     "WhatsAppTextRequest",
 ]

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Protocol, runtime_checkable
 
 from ....events import DeliveryEvent
@@ -12,6 +12,7 @@ from ..models import (
     WhatsAppInboundMessage,
     WhatsAppInteractiveRequest,
     WhatsAppLocationRequest,
+    WhatsAppManagedTemplate,
     WhatsAppMediaDeleteResult,
     WhatsAppMediaInfo,
     WhatsAppMediaRequest,
@@ -21,7 +22,14 @@ from ..models import (
     WhatsAppProductMessageRequest,
     WhatsAppReactionRequest,
     WhatsAppSendResult,
+    WhatsAppTemplateCreateRequest,
+    WhatsAppTemplateDeleteRequest,
+    WhatsAppTemplateDeleteResult,
+    WhatsAppTemplateListRequest,
+    WhatsAppTemplateListResult,
+    WhatsAppTemplateMutationResult,
     WhatsAppTemplateRequest,
+    WhatsAppTemplateUpdateRequest,
     WhatsAppTextRequest,
 )
 
@@ -262,3 +270,83 @@ class AsyncWhatsAppGateway(Protocol):
     ) -> WhatsAppInboundMessage | None: ...
 
     async def aclose(self) -> None: ...
+
+
+@runtime_checkable
+class WhatsAppTemplateManagementGateway(Protocol):
+    def list_templates(
+        self,
+        request: WhatsAppTemplateListRequest | None = None,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppTemplateListResult: ...
+
+    def get_template(
+        self,
+        template_id: str,
+        *,
+        fields: Sequence[str] = (),
+        options: RequestOptions | None = None,
+    ) -> WhatsAppManagedTemplate: ...
+
+    def create_template(
+        self,
+        request: WhatsAppTemplateCreateRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppTemplateMutationResult: ...
+
+    def update_template(
+        self,
+        template_id: str,
+        request: WhatsAppTemplateUpdateRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppTemplateMutationResult: ...
+
+    def delete_template(
+        self,
+        request: WhatsAppTemplateDeleteRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppTemplateDeleteResult: ...
+
+
+@runtime_checkable
+class AsyncWhatsAppTemplateManagementGateway(Protocol):
+    async def alist_templates(
+        self,
+        request: WhatsAppTemplateListRequest | None = None,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppTemplateListResult: ...
+
+    async def aget_template(
+        self,
+        template_id: str,
+        *,
+        fields: Sequence[str] = (),
+        options: RequestOptions | None = None,
+    ) -> WhatsAppManagedTemplate: ...
+
+    async def acreate_template(
+        self,
+        request: WhatsAppTemplateCreateRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppTemplateMutationResult: ...
+
+    async def aupdate_template(
+        self,
+        template_id: str,
+        request: WhatsAppTemplateUpdateRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppTemplateMutationResult: ...
+
+    async def adelete_template(
+        self,
+        request: WhatsAppTemplateDeleteRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppTemplateDeleteResult: ...

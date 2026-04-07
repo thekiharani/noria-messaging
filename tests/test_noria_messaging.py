@@ -45,9 +45,15 @@ from noria_messaging import (
     WhatsAppProductMessageRequest,
     WhatsAppProductSection,
     WhatsAppReactionRequest,
+    WhatsAppTemplateButtonDefinition,
     WhatsAppTemplateComponent,
+    WhatsAppTemplateComponentDefinition,
+    WhatsAppTemplateCreateRequest,
+    WhatsAppTemplateDeleteRequest,
+    WhatsAppTemplateListRequest,
     WhatsAppTemplateParameter,
     WhatsAppTemplateRequest,
+    WhatsAppTemplateUpdateRequest,
     WhatsAppTextRequest,
     fastapi_parse_meta_delivery_events,
     fastapi_parse_meta_inbound_messages,
@@ -571,6 +577,250 @@ def test_meta_whatsapp_gateway_sends_templates() -> None:
     assert template["name"] == "shipment_update"
     assert template["language"] == {"code": "en_US"}
     assert template["components"][0]["parameters"][0]["text"] == "Alice"
+
+
+def test_meta_whatsapp_gateway_manages_templates() -> None:
+    client = FakeSyncHttpClient(
+        responses=[
+            make_response(
+                200,
+                {
+                    "data": [
+                        {
+                            "id": "tmpl-1",
+                            "name": "seasonal_promotion",
+                            "language": "en",
+                            "category": "MARKETING",
+                            "status": "APPROVED",
+                            "components": [
+                                {
+                                    "type": "BODY",
+                                    "text": "Hello {{1}}",
+                                    "example": {"body_text": [["Alice"]]},
+                                }
+                            ],
+                        }
+                    ],
+                    "paging": {"cursors": {"before": "prev-1", "after": "next-1"}},
+                    "summary": {"total_count": 1, "message_template_limit": 6000},
+                },
+            ),
+            make_response(
+                200,
+                {
+                    "id": "tmpl-1",
+                    "name": "seasonal_promotion",
+                    "language": "en",
+                    "category": "MARKETING",
+                    "status": "APPROVED",
+                    "parameter_format": "POSITIONAL",
+                    "message_send_ttl_seconds": 600,
+                    "components": [
+                        {
+                            "type": "BODY",
+                            "text": "Hello {{1}}",
+                            "example": {"body_text": [["Alice"]]},
+                        }
+                    ],
+                },
+            ),
+            make_response(
+                200,
+                {
+                    "id": "tmpl-2",
+                    "status": "PENDING",
+                    "category": "MARKETING",
+                },
+            ),
+            make_response(
+                200,
+                {
+                    "success": True,
+                    "id": "tmpl-1",
+                    "name": "seasonal_promotion",
+                    "category": "UTILITY",
+                },
+            ),
+            make_response(200, {"success": True}),
+        ]
+    )
+
+    gateway = MetaWhatsAppGateway(
+        access_token="meta-token",
+        phone_number_id="123456789",
+        whatsapp_business_account_id="9988776655",
+        client=client,
+    )
+
+    listed = gateway.list_templates(
+        WhatsAppTemplateListRequest(
+            category=("marketing",),
+            status=("approved", "paused"),
+            fields=("name", "category"),
+            summary_fields=("total_count", "message_template_limit"),
+            limit=25,
+            after="next-1",
+        )
+    )
+    template = gateway.get_template("tmpl-1", fields=("name", "status"))
+    created = gateway.create_template(
+        WhatsAppTemplateCreateRequest(
+            name="seasonal_promotion",
+            language="en",
+            category="marketing",
+            components=(
+                WhatsAppTemplateComponentDefinition(
+                    type="body",
+                    text="Hello {{1}}",
+                    example={"body_text": [["Alice"]]},
+                ),
+                WhatsAppTemplateComponentDefinition(
+                    type="buttons",
+                    buttons=(
+                        WhatsAppTemplateButtonDefinition(
+                            type="quick_reply",
+                            text="Unsubscribe",
+                        ),
+                    ),
+                ),
+            ),
+            allow_category_change=True,
+            parameter_format="positional",
+            message_send_ttl_seconds=600,
+        )
+    )
+    updated = gateway.update_template(
+        "tmpl-1",
+        WhatsAppTemplateUpdateRequest(
+            category="utility",
+            components=(
+                WhatsAppTemplateComponentDefinition(type="body", text="Updated {{1}}"),
+            ),
+        ),
+    )
+    deleted = gateway.delete_template(
+        WhatsAppTemplateDeleteRequest(name="seasonal_promotion", template_id="tmpl-1")
+    )
+
+    assert listed.templates[0].template_id == "tmpl-1"
+    assert listed.summary is not None
+    assert listed.summary.total_count == 1
+    assert listed.after == "next-1"
+    assert template.parameter_format == "POSITIONAL"
+    assert template.message_send_ttl_seconds == 600
+    assert created.template_id == "tmpl-2"
+    assert created.status == "PENDING"
+    assert updated.success is True
+    assert updated.category == "UTILITY"
+    assert deleted.deleted is True
+
+    assert client.calls[0]["url"] == (
+        f"https://graph.facebook.com/{META_GRAPH_API_VERSION}/9988776655/message_templates"
+    )
+    assert client.calls[0]["params"] == {
+        "category": "MARKETING",
+        "status": "APPROVED,PAUSED",
+        "fields": "name,category",
+        "summary": "total_count,message_template_limit",
+        "limit": "25",
+        "after": "next-1",
+    }
+    assert client.calls[1]["url"] == f"https://graph.facebook.com/{META_GRAPH_API_VERSION}/tmpl-1"
+    assert client.calls[1]["params"] == {"fields": "name,status"}
+    assert client.calls[2]["json"]["category"] == "MARKETING"
+    assert client.calls[2]["json"]["allow_category_change"] is True
+    assert client.calls[2]["json"]["parameter_format"] == "POSITIONAL"
+    assert client.calls[2]["json"]["components"][1]["buttons"][0]["type"] == "QUICK_REPLY"
+    assert client.calls[3]["json"]["category"] == "UTILITY"
+    assert client.calls[3]["json"]["components"][0]["type"] == "BODY"
+    assert client.calls[4]["params"] == {"name": "seasonal_promotion", "hsm_id": "tmpl-1"}
+
+
+def test_meta_whatsapp_gateway_manages_templates_async() -> None:
+    async def run() -> None:
+        client = FakeAsyncHttpClient(
+            responses=[
+                make_response(
+                    200,
+                    {
+                        "data": [
+                            {
+                                "id": "tmpl-async-1",
+                                "name": "shipment_async",
+                                "language": "en_US",
+                                "category": "UTILITY",
+                                "status": "APPROVED",
+                            }
+                        ]
+                    },
+                ),
+                make_response(
+                    200,
+                    {
+                        "id": "tmpl-async-1",
+                        "name": "shipment_async",
+                        "status": "APPROVED",
+                    },
+                ),
+                make_response(
+                    200,
+                    {
+                        "id": "tmpl-async-2",
+                        "status": "PENDING",
+                    },
+                ),
+                make_response(
+                    200,
+                    {
+                        "success": True,
+                        "id": "tmpl-async-1",
+                        "category": "UTILITY",
+                    },
+                ),
+                make_response(200, {"success": True}),
+            ]
+        )
+
+        gateway = MetaWhatsAppGateway(
+            access_token="meta-token",
+            phone_number_id="123456789",
+            whatsapp_business_account_id="9988776655",
+            async_client=client,
+        )
+
+        listed = await gateway.alist_templates()
+        template = await gateway.aget_template("tmpl-async-1", fields=("name",))
+        created = await gateway.acreate_template(
+            WhatsAppTemplateCreateRequest(
+                name="shipment_async",
+                language="en_US",
+                category="utility",
+                components=(
+                    WhatsAppTemplateComponentDefinition(type="body", text="Hello {{1}}"),
+                ),
+            )
+        )
+        updated = await gateway.aupdate_template(
+            "tmpl-async-1",
+            WhatsAppTemplateUpdateRequest(
+                category="utility",
+                components=(
+                    WhatsAppTemplateComponentDefinition(type="body", text="Updated {{1}}"),
+                ),
+            ),
+        )
+        deleted = await gateway.adelete_template(
+            WhatsAppTemplateDeleteRequest(template_ids=("tmpl-async-1",))
+        )
+
+        assert listed.templates[0].template_id == "tmpl-async-1"
+        assert template.template_id == "tmpl-async-1"
+        assert created.template_id == "tmpl-async-2"
+        assert updated.success is True
+        assert deleted.deleted is True
+        assert client.calls[4]["params"] == {"hsm_ids": '["tmpl-async-1"]'}
+
+    asyncio.run(run())
 
 
 def test_meta_whatsapp_gateway_sends_media_location_contacts_reaction_and_interactive() -> None:

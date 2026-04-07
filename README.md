@@ -40,7 +40,7 @@ Implemented now:
 - request/response hooks for observability
 - normalized error types
 - SMS service with Onfon send, balance, delivery reports, groups, and templates
-- WhatsApp service with Meta Cloud API text, template, media, location, contacts, reaction, button/list interactive sends, product/catalog/product-list/flow interactive sends, and media ID helpers
+- WhatsApp service with Meta Cloud API text, template, media, location, contacts, reaction, button/list interactive sends, product/catalog/product-list/flow interactive sends, media ID helpers, and full template management
 - normalized Meta delivery-status parsing
 - normalized Meta inbound message parsing
 - FastAPI and Flask webhook helpers for Onfon and Meta
@@ -79,6 +79,12 @@ from noria_messaging import (
     WhatsAppTemplateRequest,
     WhatsAppTemplateComponent,
     WhatsAppTemplateParameter,
+    WhatsAppTemplateButtonDefinition,
+    WhatsAppTemplateComponentDefinition,
+    WhatsAppTemplateCreateRequest,
+    WhatsAppTemplateDeleteRequest,
+    WhatsAppTemplateListRequest,
+    WhatsAppTemplateUpdateRequest,
     WhatsAppMediaRequest,
     WhatsAppMediaUploadRequest,
     WhatsAppMediaInfo,
@@ -126,9 +132,12 @@ messaging = AsyncMessagingClient(
     whatsapp=MetaWhatsAppGateway(
         access_token="your-meta-token",
         phone_number_id="your-meta-phone-number-id",
+        whatsapp_business_account_id="your-meta-waba-id",
     ),
 )
 ```
+
+`whatsapp_business_account_id` is only required for WhatsApp template management. Sending messages and media operations only require `phone_number_id`.
 
 ### Services
 
@@ -155,6 +164,10 @@ Examples:
 - `SmsSendRequest`
 - `WhatsAppTextRequest`
 - `WhatsAppTemplateRequest`
+- `WhatsAppTemplateListRequest`
+- `WhatsAppTemplateCreateRequest`
+- `WhatsAppTemplateUpdateRequest`
+- `WhatsAppTemplateDeleteRequest`
 - `WhatsAppMediaRequest`
 - `WhatsAppInteractiveRequest`
 - `WhatsAppCatalogMessageRequest`
@@ -407,6 +420,109 @@ result = await messaging.whatsapp.send_template(
 ```
 
 If you need provider-specific component payloads, pass them through `provider_options` on `WhatsAppTemplateParameter`.
+
+### Manage WhatsApp Templates
+
+Template management uses Meta's WABA-scoped endpoints. Configure `MetaWhatsAppGateway` with `whatsapp_business_account_id`, and make sure your token has the WhatsApp business-management permissions required by Meta for template CRUD.
+
+```python
+from noria_messaging import (
+    MetaWhatsAppGateway,
+    WhatsAppTemplateButtonDefinition,
+    WhatsAppTemplateComponentDefinition,
+    WhatsAppTemplateCreateRequest,
+    WhatsAppTemplateDeleteRequest,
+    WhatsAppTemplateListRequest,
+    WhatsAppTemplateUpdateRequest,
+)
+
+gateway = MetaWhatsAppGateway(
+    access_token="your-system-user-token",
+    phone_number_id="your-phone-number-id",
+    whatsapp_business_account_id="your-waba-id",
+)
+
+templates = await messaging.whatsapp.list_templates(
+    WhatsAppTemplateListRequest(
+        status=("approved", "paused"),
+        category=("marketing",),
+        fields=("name", "language", "status", "category"),
+        limit=50,
+    )
+)
+
+template = await messaging.whatsapp.get_template(
+    "123456789012345",
+    fields=("name", "components", "status", "quality_score"),
+)
+
+created = await messaging.whatsapp.create_template(
+    WhatsAppTemplateCreateRequest(
+        name="shipment_update",
+        language="en_US",
+        category="utility",
+        parameter_format="positional",
+        components=[
+            WhatsAppTemplateComponentDefinition(
+                type="body",
+                text="Hello {{1}}, your order {{2}} is on the way.",
+                example={"body_text": [["Alice", "Order-123"]]},
+            ),
+            WhatsAppTemplateComponentDefinition(
+                type="buttons",
+                buttons=[
+                    WhatsAppTemplateButtonDefinition(
+                        type="quick_reply",
+                        text="Track order",
+                    )
+                ],
+            ),
+        ],
+        allow_category_change=True,
+    )
+)
+
+updated = await messaging.whatsapp.update_template(
+    created.template_id or "123456789012345",
+    WhatsAppTemplateUpdateRequest(
+        category="utility",
+        components=[
+            WhatsAppTemplateComponentDefinition(
+                type="body",
+                text="Hello {{1}}, order {{2}} is arriving today.",
+            )
+        ],
+    ),
+)
+
+deleted = await messaging.whatsapp.delete_template(
+    WhatsAppTemplateDeleteRequest(
+        name="shipment_update",
+        template_id=created.template_id,
+    )
+)
+
+print(templates.summary.total_count if templates.summary else None)
+print(template.template_id, template.status, template.quality_score)
+print(created.template_id, created.status)
+print(updated.template_id, updated.category)
+print(deleted.deleted)
+```
+
+Delete multiple templates in one call by passing `template_ids`:
+
+```python
+await messaging.whatsapp.delete_template(
+    WhatsAppTemplateDeleteRequest(template_ids=("123", "456", "789"))
+)
+```
+
+Notes:
+
+- `name` on create must satisfy Meta's template naming rules.
+- `components` must match Meta's official template component shapes for the chosen category and template type.
+- `get_template(...)` uses the template object id, not the template name.
+- `delete_template(...)` supports either `name` with optional `template_id`, or bulk `template_ids`.
 
 ### Send Media
 

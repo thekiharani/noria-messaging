@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+import json
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -33,6 +34,7 @@ from ..models import (
     WhatsAppInteractiveRow,
     WhatsAppInteractiveSection,
     WhatsAppLocationRequest,
+    WhatsAppManagedTemplate,
     WhatsAppMediaDeleteResult,
     WhatsAppMediaInfo,
     WhatsAppMediaRequest,
@@ -45,9 +47,19 @@ from ..models import (
     WhatsAppReactionRequest,
     WhatsAppSendReceipt,
     WhatsAppSendResult,
+    WhatsAppTemplateButtonDefinition,
     WhatsAppTemplateComponent,
+    WhatsAppTemplateComponentDefinition,
+    WhatsAppTemplateCreateRequest,
+    WhatsAppTemplateDeleteRequest,
+    WhatsAppTemplateDeleteResult,
+    WhatsAppTemplateListRequest,
+    WhatsAppTemplateListResult,
+    WhatsAppTemplateListSummary,
+    WhatsAppTemplateMutationResult,
     WhatsAppTemplateParameter,
     WhatsAppTemplateRequest,
+    WhatsAppTemplateUpdateRequest,
     WhatsAppTextRequest,
 )
 
@@ -60,6 +72,7 @@ _MEDIA_TYPES = {"image", "audio", "document", "sticker", "video"}
 class MetaWhatsAppGateway:
     access_token: str
     phone_number_id: str
+    whatsapp_business_account_id: str | None = None
     app_secret: str | None = None
     webhook_verify_token: str | None = None
     api_version: str = META_GRAPH_API_VERSION
@@ -78,6 +91,7 @@ class MetaWhatsAppGateway:
     def __post_init__(self) -> None:
         self.access_token = _require_text(self.access_token, "access_token")
         self.phone_number_id = _require_text(self.phone_number_id, "phone_number_id")
+        self.whatsapp_business_account_id = coerce_string(self.whatsapp_business_account_id)
         self.app_secret = coerce_string(self.app_secret)
         self.webhook_verify_token = coerce_string(self.webhook_verify_token)
         self.api_version = _require_text(self.api_version, "api_version")
@@ -135,6 +149,198 @@ class MetaWhatsAppGateway:
             _build_template_payload(request),
             options=options,
         )
+
+    def list_templates(
+        self,
+        request: WhatsAppTemplateListRequest | None = None,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppTemplateListResult:
+        response = self._request(
+            HttpRequestOptions(
+                path=self._template_collection_path(),
+                method="GET",
+                query=_build_template_list_query(request),
+                headers=options.headers if options else None,
+                timeout_seconds=options.timeout_seconds if options else None,
+                retry=options.retry if options else None,
+            )
+        )
+        return _build_template_list_result(self.provider_name, response)
+
+    async def alist_templates(
+        self,
+        request: WhatsAppTemplateListRequest | None = None,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppTemplateListResult:
+        response = await self._arequest(
+            HttpRequestOptions(
+                path=self._template_collection_path(),
+                method="GET",
+                query=_build_template_list_query(request),
+                headers=options.headers if options else None,
+                timeout_seconds=options.timeout_seconds if options else None,
+                retry=options.retry if options else None,
+            )
+        )
+        return _build_template_list_result(self.provider_name, response)
+
+    def get_template(
+        self,
+        template_id: str,
+        *,
+        fields: Sequence[str] = (),
+        options: RequestOptions | None = None,
+    ) -> WhatsAppManagedTemplate:
+        response = self._request(
+            HttpRequestOptions(
+                path=self._template_path(template_id),
+                method="GET",
+                query=_build_template_fields_query(fields),
+                headers=options.headers if options else None,
+                timeout_seconds=options.timeout_seconds if options else None,
+                retry=options.retry if options else None,
+            )
+        )
+        return _build_managed_template(self.provider_name, response)
+
+    async def aget_template(
+        self,
+        template_id: str,
+        *,
+        fields: Sequence[str] = (),
+        options: RequestOptions | None = None,
+    ) -> WhatsAppManagedTemplate:
+        response = await self._arequest(
+            HttpRequestOptions(
+                path=self._template_path(template_id),
+                method="GET",
+                query=_build_template_fields_query(fields),
+                headers=options.headers if options else None,
+                timeout_seconds=options.timeout_seconds if options else None,
+                retry=options.retry if options else None,
+            )
+        )
+        return _build_managed_template(self.provider_name, response)
+
+    def create_template(
+        self,
+        request: WhatsAppTemplateCreateRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppTemplateMutationResult:
+        response = self._request(
+            HttpRequestOptions(
+                path=self._template_collection_path(),
+                method="POST",
+                body=_build_template_create_payload(request),
+                headers=options.headers if options else None,
+                timeout_seconds=options.timeout_seconds if options else None,
+                retry=options.retry if options else None,
+            )
+        )
+        return _build_template_mutation_result(self.provider_name, response)
+
+    async def acreate_template(
+        self,
+        request: WhatsAppTemplateCreateRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppTemplateMutationResult:
+        response = await self._arequest(
+            HttpRequestOptions(
+                path=self._template_collection_path(),
+                method="POST",
+                body=_build_template_create_payload(request),
+                headers=options.headers if options else None,
+                timeout_seconds=options.timeout_seconds if options else None,
+                retry=options.retry if options else None,
+            )
+        )
+        return _build_template_mutation_result(self.provider_name, response)
+
+    def update_template(
+        self,
+        template_id: str,
+        request: WhatsAppTemplateUpdateRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppTemplateMutationResult:
+        response = self._request(
+            HttpRequestOptions(
+                path=self._template_path(template_id),
+                method="POST",
+                body=_build_template_update_payload(request),
+                headers=options.headers if options else None,
+                timeout_seconds=options.timeout_seconds if options else None,
+                retry=options.retry if options else None,
+            )
+        )
+        return _build_template_mutation_result(
+            self.provider_name,
+            response,
+            fallback_template_id=_require_text(template_id, "template_id"),
+        )
+
+    async def aupdate_template(
+        self,
+        template_id: str,
+        request: WhatsAppTemplateUpdateRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppTemplateMutationResult:
+        response = await self._arequest(
+            HttpRequestOptions(
+                path=self._template_path(template_id),
+                method="POST",
+                body=_build_template_update_payload(request),
+                headers=options.headers if options else None,
+                timeout_seconds=options.timeout_seconds if options else None,
+                retry=options.retry if options else None,
+            )
+        )
+        return _build_template_mutation_result(
+            self.provider_name,
+            response,
+            fallback_template_id=_require_text(template_id, "template_id"),
+        )
+
+    def delete_template(
+        self,
+        request: WhatsAppTemplateDeleteRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppTemplateDeleteResult:
+        response = self._request(
+            HttpRequestOptions(
+                path=self._template_collection_path(),
+                method="DELETE",
+                query=_build_template_delete_query(request),
+                headers=options.headers if options else None,
+                timeout_seconds=options.timeout_seconds if options else None,
+                retry=options.retry if options else None,
+            )
+        )
+        return _build_template_delete_result(self.provider_name, request, response)
+
+    async def adelete_template(
+        self,
+        request: WhatsAppTemplateDeleteRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppTemplateDeleteResult:
+        response = await self._arequest(
+            HttpRequestOptions(
+                path=self._template_collection_path(),
+                method="DELETE",
+                query=_build_template_delete_query(request),
+                headers=options.headers if options else None,
+                timeout_seconds=options.timeout_seconds if options else None,
+                retry=options.retry if options else None,
+            )
+        )
+        return _build_template_delete_result(self.provider_name, request, response)
 
     def send_media(
         self,
@@ -521,6 +727,14 @@ class MetaWhatsAppGateway:
     def _messages_path(self) -> str:
         return f"/{self.api_version}/{self.phone_number_id}/messages"
 
+    def _template_collection_path(self) -> str:
+        return (
+            f"/{self.api_version}/{self._require_whatsapp_business_account_id()}/message_templates"
+        )
+
+    def _template_path(self, template_id: str) -> str:
+        return f"/{self.api_version}/{_require_text(template_id, 'template_id')}"
+
     def _media_upload_path(self) -> str:
         return f"/{self.api_version}/{self.phone_number_id}/media"
 
@@ -529,6 +743,13 @@ class MetaWhatsAppGateway:
 
     def _media_query(self) -> dict[str, str]:
         return {"phone_number_id": self.phone_number_id}
+
+    def _require_whatsapp_business_account_id(self) -> str:
+        if self.whatsapp_business_account_id is None:
+            raise ConfigurationError(
+                "Meta WhatsApp template management requires whatsapp_business_account_id."
+            )
+        return self.whatsapp_business_account_id
 
     def _send_request(
         self,
@@ -743,6 +964,349 @@ def _build_media_delete_result(
         provider=provider_name,
         media_id=media_id,
         deleted=bool(response.get("success")),
+        raw=response,
+    )
+
+
+def _build_template_list_query(
+    request: WhatsAppTemplateListRequest | None,
+) -> dict[str, str] | None:
+    if request is None:
+        return None
+
+    query: dict[str, str] = {
+        key: _require_text(coerce_string(value), f"provider_options[{key}]")
+        for key, value in request.provider_options.items()
+    }
+    _set_query_value(query, "category", request.category, uppercase=True)
+    _set_query_value(query, "content", request.content)
+    _set_query_value(query, "language", request.language)
+    _set_query_value(query, "name", request.name)
+    _set_query_value(query, "name_or_content", request.name_or_content)
+    _set_query_value(query, "quality_score", request.quality_score, uppercase=True)
+    _set_query_value(query, "since", request.since)
+    _set_query_value(query, "status", request.status, uppercase=True)
+    _set_query_value(query, "until", request.until)
+    _set_query_value(query, "fields", request.fields)
+    _set_query_value(query, "summary", request.summary_fields)
+    _set_query_value(query, "limit", request.limit)
+    _set_query_value(query, "before", request.before)
+    _set_query_value(query, "after", request.after)
+    return query or None
+
+
+def _build_template_fields_query(fields: Sequence[str]) -> dict[str, str] | None:
+    query: dict[str, str] = {}
+    _set_query_value(query, "fields", fields)
+    return query or None
+
+
+def _build_template_create_payload(request: WhatsAppTemplateCreateRequest) -> dict[str, Any]:
+    payload = dict(request.provider_options or {})
+    payload["name"] = _require_text(request.name, "name")
+    payload["language"] = _require_text(request.language, "language")
+    payload["category"] = _normalize_template_enum(request.category, "category")
+    if request.allow_category_change is not None:
+        payload["allow_category_change"] = request.allow_category_change
+    if request.components:
+        payload["components"] = [
+            _build_template_component_definition(component) for component in request.components
+        ]
+    if request.parameter_format is not None:
+        payload["parameter_format"] = _normalize_template_enum(
+            request.parameter_format,
+            "parameter_format",
+        )
+    if request.sub_category is not None:
+        payload["sub_category"] = _normalize_template_enum(request.sub_category, "sub_category")
+    if request.message_send_ttl_seconds is not None:
+        payload["message_send_ttl_seconds"] = request.message_send_ttl_seconds
+    if request.library_template_name is not None:
+        payload["library_template_name"] = _require_text(
+            request.library_template_name,
+            "library_template_name",
+        )
+    if request.is_primary_device_delivery_only is not None:
+        payload["is_primary_device_delivery_only"] = request.is_primary_device_delivery_only
+    if request.creative_sourcing_spec:
+        payload["creative_sourcing_spec"] = dict(request.creative_sourcing_spec)
+    if request.library_template_body_inputs:
+        payload["library_template_body_inputs"] = dict(request.library_template_body_inputs)
+    if request.library_template_button_inputs:
+        payload["library_template_button_inputs"] = [
+            dict(item) for item in request.library_template_button_inputs
+        ]
+    return payload
+
+
+def _build_template_update_payload(request: WhatsAppTemplateUpdateRequest) -> dict[str, Any]:
+    payload = dict(request.provider_options or {})
+    if request.category is not None:
+        payload["category"] = _normalize_template_enum(request.category, "category")
+    if request.components:
+        payload["components"] = [
+            _build_template_component_definition(component) for component in request.components
+        ]
+    if request.parameter_format is not None:
+        payload["parameter_format"] = _normalize_template_enum(
+            request.parameter_format,
+            "parameter_format",
+        )
+    if request.message_send_ttl_seconds is not None:
+        payload["message_send_ttl_seconds"] = request.message_send_ttl_seconds
+    if request.creative_sourcing_spec:
+        payload["creative_sourcing_spec"] = dict(request.creative_sourcing_spec)
+    if not payload:
+        raise ValueError("template update request must include at least one field.")
+    return payload
+
+
+def _build_template_delete_query(request: WhatsAppTemplateDeleteRequest) -> dict[str, str]:
+    query: dict[str, str] = {
+        key: _require_text(coerce_string(value), f"provider_options[{key}]")
+        for key, value in request.provider_options.items()
+    }
+    template_ids = _normalize_text_sequence(request.template_ids, "template_ids[]")
+    template_id = coerce_string(request.template_id)
+    name = coerce_string(request.name)
+
+    if template_ids:
+        if name is not None or template_id is not None:
+            raise ValueError("template_ids cannot be combined with name or template_id.")
+        query["hsm_ids"] = json.dumps(list(template_ids))
+        return query
+
+    if name is None:
+        raise ValueError("delete template request requires name or template_ids.")
+    query["name"] = _require_text(name, "name")
+    if template_id is not None:
+        query["hsm_id"] = _require_text(template_id, "template_id")
+    return query
+
+
+def _build_template_component_definition(
+    component: WhatsAppTemplateComponentDefinition,
+) -> dict[str, Any]:
+    payload = dict(component.provider_options or {})
+    payload["type"] = _normalize_template_enum(component.type, "components[].type")
+    if component.format is not None:
+        payload["format"] = _normalize_template_enum(component.format, "components[].format")
+    if component.text is not None:
+        payload["text"] = component.text
+    if component.buttons:
+        payload["buttons"] = [
+            _build_template_button_definition(button) for button in component.buttons
+        ]
+    if component.example:
+        payload["example"] = dict(component.example)
+    return payload
+
+
+def _build_template_button_definition(
+    button: WhatsAppTemplateButtonDefinition,
+) -> dict[str, Any]:
+    payload = dict(button.provider_options or {})
+    payload["type"] = _normalize_template_enum(button.type, "buttons[].type")
+    if button.text is not None:
+        payload["text"] = button.text
+    if button.phone_number is not None:
+        payload["phone_number"] = button.phone_number
+    if button.url is not None:
+        payload["url"] = button.url
+    if button.example:
+        payload["example"] = list(button.example)
+    if button.flow_id is not None:
+        payload["flow_id"] = button.flow_id
+    if button.flow_name is not None:
+        payload["flow_name"] = button.flow_name
+    if button.flow_json is not None:
+        payload["flow_json"] = button.flow_json
+    if button.flow_action is not None:
+        payload["flow_action"] = _normalize_template_enum(
+            button.flow_action,
+            "buttons[].flow_action",
+        )
+    if button.navigate_screen is not None:
+        payload["navigate_screen"] = button.navigate_screen
+    if button.otp_type is not None:
+        payload["otp_type"] = _normalize_template_enum(button.otp_type, "buttons[].otp_type")
+    if button.zero_tap_terms_accepted is not None:
+        payload["zero_tap_terms_accepted"] = button.zero_tap_terms_accepted
+    if button.supported_apps:
+        payload["supported_apps"] = [dict(item) for item in button.supported_apps]
+    return payload
+
+
+def _build_template_list_result(
+    provider_name: str,
+    response: Mapping[str, object],
+) -> WhatsAppTemplateListResult:
+    rows = response.get("data")
+    templates = tuple(
+        _build_managed_template(provider_name, row)
+        for row in (rows if isinstance(rows, list) else [])
+    )
+    paging = to_object(response.get("paging"))
+    cursors = to_object(paging.get("cursors"))
+    summary_payload = to_object(response.get("summary"))
+    return WhatsAppTemplateListResult(
+        provider=provider_name,
+        templates=templates,
+        before=coerce_string(cursors.get("before")),
+        after=coerce_string(cursors.get("after")),
+        summary=(
+            _build_template_list_summary(summary_payload) if summary_payload else None
+        ),
+        raw=response,
+    )
+
+
+def _build_template_list_summary(
+    payload: Mapping[str, object],
+) -> WhatsAppTemplateListSummary:
+    return WhatsAppTemplateListSummary(
+        total_count=_coerce_int(payload.get("total_count")),
+        message_template_count=_coerce_int(payload.get("message_template_count")),
+        message_template_limit=_coerce_int(payload.get("message_template_limit")),
+        are_translations_complete=_coerce_bool(payload.get("are_translations_complete")),
+        raw=payload,
+    )
+
+
+def _build_managed_template(
+    provider_name: str,
+    payload: object,
+) -> WhatsAppManagedTemplate:
+    row = to_object(payload)
+    template_id = coerce_string(row.get("id"))
+    if template_id is None:
+        raise GatewayError(
+            "Meta template response did not include a template id.",
+            provider=provider_name,
+            response_body=payload,
+        )
+
+    components = tuple(
+        _parse_template_component_definition(item)
+        for item in _normalize_rows(row.get("components"))
+    )
+    quality_payload = to_object(row.get("quality_score"))
+    metadata = _compact_mapping(
+        {
+            "bid_spec": to_object(row.get("bid_spec")) or None,
+            "degrees_of_freedom_spec": to_object(row.get("degrees_of_freedom_spec")) or None,
+            "quality_score_details": quality_payload or None,
+        }
+    )
+    return WhatsAppManagedTemplate(
+        provider=provider_name,
+        template_id=template_id,
+        name=coerce_string(row.get("name")),
+        language=coerce_string(row.get("language")),
+        category=coerce_string(row.get("category")),
+        status=coerce_string(row.get("status")),
+        components=components,
+        parameter_format=coerce_string(row.get("parameter_format")),
+        sub_category=coerce_string(row.get("sub_category")),
+        previous_category=coerce_string(row.get("previous_category")),
+        correct_category=coerce_string(row.get("correct_category")),
+        rejected_reason=coerce_string(row.get("rejected_reason")),
+        quality_score=(
+            coerce_string(quality_payload.get("score"))
+            or coerce_string(quality_payload.get("quality_score"))
+            or coerce_string(row.get("quality_score"))
+        ),
+        cta_url_link_tracking_opted_out=_coerce_bool(
+            row.get("cta_url_link_tracking_opted_out")
+        ),
+        library_template_name=coerce_string(row.get("library_template_name")),
+        message_send_ttl_seconds=_coerce_int(row.get("message_send_ttl_seconds")),
+        metadata=metadata,
+        raw=row,
+    )
+
+
+def _parse_template_component_definition(payload: object) -> WhatsAppTemplateComponentDefinition:
+    row = to_object(payload)
+    known_keys = {"type", "format", "text", "buttons", "example"}
+    return WhatsAppTemplateComponentDefinition(
+        type=coerce_string(row.get("type")) or "",
+        format=coerce_string(row.get("format")),
+        text=coerce_string(row.get("text")),
+        buttons=tuple(
+            _parse_template_button_definition(item) for item in _normalize_rows(row.get("buttons"))
+        ),
+        example=to_object(row.get("example")),
+        provider_options={key: value for key, value in row.items() if key not in known_keys},
+    )
+
+
+def _parse_template_button_definition(payload: object) -> WhatsAppTemplateButtonDefinition:
+    row = to_object(payload)
+    known_keys = {
+        "type",
+        "text",
+        "phone_number",
+        "url",
+        "example",
+        "flow_id",
+        "flow_name",
+        "flow_json",
+        "flow_action",
+        "navigate_screen",
+        "otp_type",
+        "zero_tap_terms_accepted",
+        "supported_apps",
+    }
+    supported_apps = tuple(to_object(item) for item in _normalize_rows(row.get("supported_apps")))
+    return WhatsAppTemplateButtonDefinition(
+        type=coerce_string(row.get("type")) or "",
+        text=coerce_string(row.get("text")),
+        phone_number=coerce_string(row.get("phone_number")),
+        url=coerce_string(row.get("url")),
+        example=tuple(_normalize_text_sequence(row.get("example"), "buttons[].example[]")),
+        flow_id=coerce_string(row.get("flow_id")),
+        flow_name=coerce_string(row.get("flow_name")),
+        flow_json=coerce_string(row.get("flow_json")),
+        flow_action=coerce_string(row.get("flow_action")),
+        navigate_screen=coerce_string(row.get("navigate_screen")),
+        otp_type=coerce_string(row.get("otp_type")),
+        zero_tap_terms_accepted=_coerce_bool(row.get("zero_tap_terms_accepted")),
+        supported_apps=supported_apps,
+        provider_options={key: value for key, value in row.items() if key not in known_keys},
+    )
+
+
+def _build_template_mutation_result(
+    provider_name: str,
+    response: Mapping[str, object],
+    *,
+    fallback_template_id: str | None = None,
+) -> WhatsAppTemplateMutationResult:
+    template_id = coerce_string(response.get("id")) or fallback_template_id
+    success = _coerce_bool(response.get("success"))
+    return WhatsAppTemplateMutationResult(
+        provider=provider_name,
+        success=success if success is not None else template_id is not None,
+        template_id=template_id,
+        name=coerce_string(response.get("name")),
+        category=coerce_string(response.get("category")),
+        status=coerce_string(response.get("status")),
+        raw=response,
+    )
+
+
+def _build_template_delete_result(
+    provider_name: str,
+    request: WhatsAppTemplateDeleteRequest,
+    response: Mapping[str, object],
+) -> WhatsAppTemplateDeleteResult:
+    return WhatsAppTemplateDeleteResult(
+        provider=provider_name,
+        deleted=bool(response.get("success")),
+        name=coerce_string(request.name),
+        template_id=coerce_string(request.template_id),
+        template_ids=tuple(_normalize_text_sequence(request.template_ids, "template_ids[]")),
         raw=response,
     )
 
@@ -1531,6 +2095,47 @@ def _first_mapping(value: object) -> dict[str, Any]:
     if isinstance(value, list):
         return to_object(value[0]) if value else {}
     return to_object(value)
+
+
+def _set_query_value(
+    query: dict[str, str],
+    key: str,
+    value: object,
+    *,
+    uppercase: bool = False,
+) -> None:
+    if value is None:
+        return
+    if isinstance(value, (str, int)):
+        text = _require_text(coerce_string(value), key)
+        query[key] = text.upper() if uppercase else text
+        return
+    if isinstance(value, Sequence) and not isinstance(value, (bytes, bytearray, memoryview)):
+        items = _normalize_text_sequence(value, f"{key}[]")
+        if not items:
+            return
+        normalized = [item.upper() for item in items] if uppercase else list(items)
+        query[key] = ",".join(normalized)
+        return
+    text = _require_text(coerce_string(value), key)
+    query[key] = text.upper() if uppercase else text
+
+
+def _normalize_text_sequence(value: object, field_name: str) -> tuple[str, ...]:
+    if isinstance(value, str):
+        return (_require_text(value, field_name),)
+    if not isinstance(value, Sequence):
+        return ()
+    items = [
+        _require_text(coerce_string(item), field_name)
+        for item in value
+        if not isinstance(item, (bytes, bytearray, memoryview))
+    ]
+    return tuple(items)
+
+
+def _normalize_template_enum(value: str, field_name: str) -> str:
+    return _require_text(value, field_name).upper()
 
 
 def _map_whatsapp_state(status: str | None) -> str:

@@ -1,11 +1,16 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 from ...events import DeliveryEvent
 from ...exceptions import ConfigurationError
 from ...types import RequestOptions
-from .gateways.base import AsyncWhatsAppGateway, WhatsAppGateway
+from .gateways.base import (
+    AsyncWhatsAppGateway,
+    AsyncWhatsAppTemplateManagementGateway,
+    WhatsAppGateway,
+    WhatsAppTemplateManagementGateway,
+)
 from .models import (
     WhatsAppCatalogMessageRequest,
     WhatsAppContactsRequest,
@@ -13,6 +18,7 @@ from .models import (
     WhatsAppInboundMessage,
     WhatsAppInteractiveRequest,
     WhatsAppLocationRequest,
+    WhatsAppManagedTemplate,
     WhatsAppMediaDeleteResult,
     WhatsAppMediaInfo,
     WhatsAppMediaRequest,
@@ -22,7 +28,14 @@ from .models import (
     WhatsAppProductMessageRequest,
     WhatsAppReactionRequest,
     WhatsAppSendResult,
+    WhatsAppTemplateCreateRequest,
+    WhatsAppTemplateDeleteRequest,
+    WhatsAppTemplateDeleteResult,
+    WhatsAppTemplateListRequest,
+    WhatsAppTemplateListResult,
+    WhatsAppTemplateMutationResult,
     WhatsAppTemplateRequest,
+    WhatsAppTemplateUpdateRequest,
     WhatsAppTextRequest,
 )
 
@@ -56,6 +69,65 @@ class WhatsAppService:
         options: RequestOptions | None = None,
     ) -> WhatsAppSendResult:
         return _require_gateway(self.gateway).send_template(request, options=options)
+
+    def list_templates(
+        self,
+        request: WhatsAppTemplateListRequest | None = None,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppTemplateListResult:
+        return _require_template_management_gateway(self.gateway).list_templates(
+            request,
+            options=options,
+        )
+
+    def get_template(
+        self,
+        template_id: str,
+        *,
+        fields: Sequence[str] = (),
+        options: RequestOptions | None = None,
+    ) -> WhatsAppManagedTemplate:
+        return _require_template_management_gateway(self.gateway).get_template(
+            template_id,
+            fields=fields,
+            options=options,
+        )
+
+    def create_template(
+        self,
+        request: WhatsAppTemplateCreateRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppTemplateMutationResult:
+        return _require_template_management_gateway(self.gateway).create_template(
+            request,
+            options=options,
+        )
+
+    def update_template(
+        self,
+        template_id: str,
+        request: WhatsAppTemplateUpdateRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppTemplateMutationResult:
+        return _require_template_management_gateway(self.gateway).update_template(
+            template_id,
+            request,
+            options=options,
+        )
+
+    def delete_template(
+        self,
+        request: WhatsAppTemplateDeleteRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppTemplateDeleteResult:
+        return _require_template_management_gateway(self.gateway).delete_template(
+            request,
+            options=options,
+        )
 
     def send_media(
         self,
@@ -205,6 +277,65 @@ class AsyncWhatsAppService:
     ) -> WhatsAppSendResult:
         return await _require_async_gateway(self.gateway).asend_template(request, options=options)
 
+    async def list_templates(
+        self,
+        request: WhatsAppTemplateListRequest | None = None,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppTemplateListResult:
+        return await _require_async_template_management_gateway(self.gateway).alist_templates(
+            request,
+            options=options,
+        )
+
+    async def get_template(
+        self,
+        template_id: str,
+        *,
+        fields: Sequence[str] = (),
+        options: RequestOptions | None = None,
+    ) -> WhatsAppManagedTemplate:
+        return await _require_async_template_management_gateway(self.gateway).aget_template(
+            template_id,
+            fields=fields,
+            options=options,
+        )
+
+    async def create_template(
+        self,
+        request: WhatsAppTemplateCreateRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppTemplateMutationResult:
+        return await _require_async_template_management_gateway(self.gateway).acreate_template(
+            request,
+            options=options,
+        )
+
+    async def update_template(
+        self,
+        template_id: str,
+        request: WhatsAppTemplateUpdateRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppTemplateMutationResult:
+        return await _require_async_template_management_gateway(self.gateway).aupdate_template(
+            template_id,
+            request,
+            options=options,
+        )
+
+    async def delete_template(
+        self,
+        request: WhatsAppTemplateDeleteRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppTemplateDeleteResult:
+        return await _require_async_template_management_gateway(self.gateway).adelete_template(
+            request,
+            options=options,
+        )
+
     async def send_media(
         self,
         request: WhatsAppMediaRequest,
@@ -341,4 +472,24 @@ def _require_gateway(gateway: WhatsAppGateway | None) -> WhatsAppGateway:
 def _require_async_gateway(gateway: AsyncWhatsAppGateway | None) -> AsyncWhatsAppGateway:
     if gateway is None:
         raise ConfigurationError("WhatsApp gateway is not configured on this client.")
+    return gateway
+
+
+def _require_template_management_gateway(
+    gateway: WhatsAppGateway | None,
+) -> WhatsAppTemplateManagementGateway:
+    if gateway is None or not isinstance(gateway, WhatsAppTemplateManagementGateway):
+        raise ConfigurationError(
+            "Configured WhatsApp gateway does not support template management."
+        )
+    return gateway
+
+
+def _require_async_template_management_gateway(
+    gateway: AsyncWhatsAppGateway | None,
+) -> AsyncWhatsAppTemplateManagementGateway:
+    if gateway is None or not isinstance(gateway, AsyncWhatsAppTemplateManagementGateway):
+        raise ConfigurationError(
+            "Configured WhatsApp gateway does not support template management."
+        )
     return gateway

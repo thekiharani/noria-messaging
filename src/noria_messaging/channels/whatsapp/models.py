@@ -65,6 +65,151 @@ class WhatsAppTemplateRequest:
 
 
 @dataclass(slots=True)
+class WhatsAppTemplateButtonDefinition:
+    type: str
+    text: str | None = None
+    phone_number: str | None = None
+    url: str | None = None
+    example: Sequence[str] = ()
+    flow_id: str | None = None
+    flow_name: str | None = None
+    flow_json: str | None = None
+    flow_action: str | None = None
+    navigate_screen: str | None = None
+    otp_type: str | None = None
+    zero_tap_terms_accepted: bool | None = None
+    supported_apps: Sequence[Mapping[str, Any]] = ()
+    provider_options: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class WhatsAppTemplateComponentDefinition:
+    type: str
+    format: str | None = None
+    text: str | None = None
+    buttons: Sequence[WhatsAppTemplateButtonDefinition] = ()
+    example: Mapping[str, Any] = field(default_factory=dict)
+    provider_options: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class WhatsAppTemplateListRequest:
+    category: Sequence[str] = ()
+    content: str | None = None
+    language: Sequence[str] = ()
+    name: str | None = None
+    name_or_content: str | None = None
+    quality_score: Sequence[str] = ()
+    since: int | None = None
+    status: Sequence[str] = ()
+    until: int | None = None
+    fields: Sequence[str] = ()
+    summary_fields: Sequence[str] = ()
+    limit: int | None = None
+    before: str | None = None
+    after: str | None = None
+    provider_options: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class WhatsAppTemplateCreateRequest:
+    name: str
+    language: str
+    category: str
+    components: Sequence[WhatsAppTemplateComponentDefinition] = ()
+    allow_category_change: bool | None = None
+    parameter_format: str | None = None
+    sub_category: str | None = None
+    message_send_ttl_seconds: int | None = None
+    library_template_name: str | None = None
+    is_primary_device_delivery_only: bool | None = None
+    creative_sourcing_spec: Mapping[str, Any] = field(default_factory=dict)
+    library_template_body_inputs: Mapping[str, Any] = field(default_factory=dict)
+    library_template_button_inputs: Sequence[Mapping[str, Any]] = ()
+    provider_options: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class WhatsAppTemplateUpdateRequest:
+    category: str | None = None
+    components: Sequence[WhatsAppTemplateComponentDefinition] = ()
+    parameter_format: str | None = None
+    message_send_ttl_seconds: int | None = None
+    creative_sourcing_spec: Mapping[str, Any] = field(default_factory=dict)
+    provider_options: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class WhatsAppTemplateDeleteRequest:
+    name: str | None = None
+    template_id: str | None = None
+    template_ids: Sequence[str] = ()
+    provider_options: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class WhatsAppManagedTemplate:
+    provider: str
+    template_id: str
+    name: str | None = None
+    language: str | None = None
+    category: str | None = None
+    status: str | None = None
+    components: tuple[WhatsAppTemplateComponentDefinition, ...] = ()
+    parameter_format: str | None = None
+    sub_category: str | None = None
+    previous_category: str | None = None
+    correct_category: str | None = None
+    rejected_reason: str | None = None
+    quality_score: str | None = None
+    cta_url_link_tracking_opted_out: bool | None = None
+    library_template_name: str | None = None
+    message_send_ttl_seconds: int | None = None
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+    raw: object = None
+
+
+@dataclass(slots=True)
+class WhatsAppTemplateListSummary:
+    total_count: int | None = None
+    message_template_count: int | None = None
+    message_template_limit: int | None = None
+    are_translations_complete: bool | None = None
+    raw: object = None
+
+
+@dataclass(slots=True)
+class WhatsAppTemplateListResult:
+    provider: str
+    templates: tuple[WhatsAppManagedTemplate, ...]
+    before: str | None = None
+    after: str | None = None
+    summary: WhatsAppTemplateListSummary | None = None
+    raw: object = None
+
+
+@dataclass(slots=True)
+class WhatsAppTemplateMutationResult:
+    provider: str
+    success: bool
+    template_id: str | None = None
+    name: str | None = None
+    category: str | None = None
+    status: str | None = None
+    raw: object = None
+
+
+@dataclass(slots=True)
+class WhatsAppTemplateDeleteResult:
+    provider: str
+    deleted: bool
+    name: str | None = None
+    template_id: str | None = None
+    template_ids: tuple[str, ...] = ()
+    raw: object = None
+
+
+@dataclass(slots=True)
 class WhatsAppMediaRequest:
     recipient: str
     media_type: WhatsAppMediaType

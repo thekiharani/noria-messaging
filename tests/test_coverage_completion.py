@@ -45,6 +45,7 @@ from noria_messaging.channels.whatsapp.gateways.meta import (
     MetaWhatsAppGateway,
     _build_catalog_message_payload,
     _build_flow_message_payload,
+    _build_managed_template,
     _build_media_delete_result,
     _build_media_info,
     _build_media_upload_files,
@@ -52,9 +53,19 @@ from noria_messaging.channels.whatsapp.gateways.meta import (
     _build_media_upload_result,
     _build_product_list_payload,
     _build_product_message_payload,
+    _build_template_button_definition,
     _build_template_component,
+    _build_template_component_definition,
+    _build_template_create_payload,
+    _build_template_delete_query,
+    _build_template_delete_result,
+    _build_template_fields_query,
+    _build_template_list_query,
+    _build_template_list_result,
+    _build_template_mutation_result,
     _build_template_parameter,
     _build_template_payload,
+    _build_template_update_payload,
     _build_text_payload,
     _first_mapping,
     _map_whatsapp_state,
@@ -79,6 +90,7 @@ from noria_messaging.channels.whatsapp.models import (
     WhatsAppInteractiveRequest,
     WhatsAppInteractiveSection,
     WhatsAppLocationRequest,
+    WhatsAppManagedTemplate,
     WhatsAppMediaDeleteResult,
     WhatsAppMediaInfo,
     WhatsAppMediaRequest,
@@ -91,9 +103,19 @@ from noria_messaging.channels.whatsapp.models import (
     WhatsAppReactionRequest,
     WhatsAppSendReceipt,
     WhatsAppSendResult,
+    WhatsAppTemplateButtonDefinition,
     WhatsAppTemplateComponent,
+    WhatsAppTemplateComponentDefinition,
+    WhatsAppTemplateCreateRequest,
+    WhatsAppTemplateDeleteRequest,
+    WhatsAppTemplateDeleteResult,
+    WhatsAppTemplateListRequest,
+    WhatsAppTemplateListResult,
+    WhatsAppTemplateListSummary,
+    WhatsAppTemplateMutationResult,
     WhatsAppTemplateParameter,
     WhatsAppTemplateRequest,
+    WhatsAppTemplateUpdateRequest,
     WhatsAppTextRequest,
 )
 from noria_messaging.channels.whatsapp.service import AsyncWhatsAppService, WhatsAppService
@@ -550,6 +572,100 @@ class DummyWhatsAppGateway:
             ),
         )
 
+    def list_templates(
+        self,
+        request: WhatsAppTemplateListRequest | None = None,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppTemplateListResult:
+        self.calls.append(("list_templates", (request, options)))
+        return WhatsAppTemplateListResult(
+            provider=self.provider_name,
+            templates=(
+                WhatsAppManagedTemplate(
+                    provider=self.provider_name,
+                    template_id="wa-template-1",
+                    name="shipment_update",
+                    language="en_US",
+                    category="UTILITY",
+                    status="APPROVED",
+                    components=(
+                        WhatsAppTemplateComponentDefinition(
+                            type="BODY",
+                            text="Hello {{1}}",
+                        ),
+                    ),
+                ),
+            ),
+            summary=WhatsAppTemplateListSummary(total_count=1),
+            after="wa-template-cursor-1",
+        )
+
+    def get_template(
+        self,
+        template_id: str,
+        *,
+        fields: tuple[str, ...] = (),
+        options: RequestOptions | None = None,
+    ) -> WhatsAppManagedTemplate:
+        self.calls.append(("get_template", (template_id, fields, options)))
+        return WhatsAppManagedTemplate(
+            provider=self.provider_name,
+            template_id=template_id,
+            name="shipment_update",
+            language="en_US",
+            category="UTILITY",
+            status="APPROVED",
+            parameter_format="POSITIONAL",
+        )
+
+    def create_template(
+        self,
+        request: WhatsAppTemplateCreateRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppTemplateMutationResult:
+        self.calls.append(("create_template", (request, options)))
+        return WhatsAppTemplateMutationResult(
+            provider=self.provider_name,
+            success=True,
+            template_id="wa-template-2",
+            name=request.name,
+            category=request.category.upper(),
+            status="PENDING",
+        )
+
+    def update_template(
+        self,
+        template_id: str,
+        request: WhatsAppTemplateUpdateRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppTemplateMutationResult:
+        self.calls.append(("update_template", (template_id, request, options)))
+        return WhatsAppTemplateMutationResult(
+            provider=self.provider_name,
+            success=True,
+            template_id=template_id,
+            category=(request.category or "UTILITY").upper(),
+            status="APPROVED",
+        )
+
+    def delete_template(
+        self,
+        request: WhatsAppTemplateDeleteRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppTemplateDeleteResult:
+        self.calls.append(("delete_template", (request, options)))
+        return WhatsAppTemplateDeleteResult(
+            provider=self.provider_name,
+            deleted=True,
+            name=request.name,
+            template_id=request.template_id,
+            template_ids=tuple(request.template_ids),
+        )
+
     def send_media(
         self,
         request: WhatsAppMediaRequest,
@@ -869,6 +985,94 @@ class DummyAsyncWhatsAppGateway:
                     provider_message_id="wa-async-2",
                 ),
             ),
+        )
+
+    async def alist_templates(
+        self,
+        request: WhatsAppTemplateListRequest | None = None,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppTemplateListResult:
+        self.calls.append(("alist_templates", (request, options)))
+        return WhatsAppTemplateListResult(
+            provider=self.provider_name,
+            templates=(
+                WhatsAppManagedTemplate(
+                    provider=self.provider_name,
+                    template_id="wa-template-async-1",
+                    name="shipment_update_async",
+                    language="en_US",
+                    category="UTILITY",
+                    status="APPROVED",
+                ),
+            ),
+            summary=WhatsAppTemplateListSummary(total_count=1),
+            after="wa-template-async-cursor-1",
+        )
+
+    async def aget_template(
+        self,
+        template_id: str,
+        *,
+        fields: tuple[str, ...] = (),
+        options: RequestOptions | None = None,
+    ) -> WhatsAppManagedTemplate:
+        self.calls.append(("aget_template", (template_id, fields, options)))
+        return WhatsAppManagedTemplate(
+            provider=self.provider_name,
+            template_id=template_id,
+            name="shipment_update_async",
+            language="en_US",
+            category="UTILITY",
+            status="APPROVED",
+            parameter_format="POSITIONAL",
+        )
+
+    async def acreate_template(
+        self,
+        request: WhatsAppTemplateCreateRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppTemplateMutationResult:
+        self.calls.append(("acreate_template", (request, options)))
+        return WhatsAppTemplateMutationResult(
+            provider=self.provider_name,
+            success=True,
+            template_id="wa-template-async-2",
+            name=request.name,
+            category=request.category.upper(),
+            status="PENDING",
+        )
+
+    async def aupdate_template(
+        self,
+        template_id: str,
+        request: WhatsAppTemplateUpdateRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppTemplateMutationResult:
+        self.calls.append(("aupdate_template", (template_id, request, options)))
+        return WhatsAppTemplateMutationResult(
+            provider=self.provider_name,
+            success=True,
+            template_id=template_id,
+            category=(request.category or "UTILITY").upper(),
+            status="APPROVED",
+        )
+
+    async def adelete_template(
+        self,
+        request: WhatsAppTemplateDeleteRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppTemplateDeleteResult:
+        self.calls.append(("adelete_template", (request, options)))
+        return WhatsAppTemplateDeleteResult(
+            provider=self.provider_name,
+            deleted=True,
+            name=request.name,
+            template_id=request.template_id,
+            template_ids=tuple(request.template_ids),
         )
 
     async def asend_media(
@@ -1819,6 +2023,40 @@ def test_whatsapp_services_models_and_configuration_errors() -> None:
         template_name="greeting",
         language_code="en_US",
     )
+    template_list_request = WhatsAppTemplateListRequest(
+        status=("approved", "paused"),
+        fields=("name", "status"),
+        limit=20,
+    )
+    template_create_request = WhatsAppTemplateCreateRequest(
+        name="shipment_update",
+        language="en_US",
+        category="utility",
+        components=(
+            WhatsAppTemplateComponentDefinition(
+                type="body",
+                text="Hello {{1}}",
+                example={"body_text": [["Alice"]]},
+            ),
+            WhatsAppTemplateComponentDefinition(
+                type="buttons",
+                buttons=(
+                    WhatsAppTemplateButtonDefinition(type="quick_reply", text="Track"),
+                ),
+            ),
+        ),
+        parameter_format="positional",
+    )
+    template_update_request = WhatsAppTemplateUpdateRequest(
+        category="marketing",
+        components=(
+            WhatsAppTemplateComponentDefinition(type="body", text="Updated {{1}}"),
+        ),
+    )
+    template_delete_request = WhatsAppTemplateDeleteRequest(
+        name="shipment_update",
+        template_id="wa-template-2",
+    )
     media_request = WhatsAppMediaRequest(
         recipient="254700000012",
         media_type="image",
@@ -1888,6 +2126,27 @@ def test_whatsapp_services_models_and_configuration_errors() -> None:
     assert service.provider == "dummy-wa"
     assert service.send_text(text_request, options=options).submitted_count == 1
     assert service.send_template(template_request, options=options).failed_count == 1
+    assert (
+        service.list_templates(template_list_request, options=options).templates[0].template_id
+        == "wa-template-1"
+    )
+    assert (
+        service.get_template("wa-template-1", fields=("name",), options=options).parameter_format
+        == "POSITIONAL"
+    )
+    assert (
+        service.create_template(template_create_request, options=options).template_id
+        == "wa-template-2"
+    )
+    assert (
+        service.update_template(
+            "wa-template-2",
+            template_update_request,
+            options=options,
+        ).category
+        == "MARKETING"
+    )
+    assert service.delete_template(template_delete_request, options=options).deleted is True
     assert service.send_media(media_request, options=options).submitted_count == 1
     assert service.send_location(location_request, options=options).submitted_count == 1
     assert service.send_contacts(contacts_request, options=options).submitted_count == 1
@@ -1925,6 +2184,15 @@ def test_whatsapp_services_models_and_configuration_errors() -> None:
     assert unconfigured.provider is None
     with pytest.raises(ConfigurationError, match="WhatsApp gateway is not configured"):
         unconfigured.send_text(text_request)
+    with pytest.raises(ConfigurationError, match="template management"):
+        WhatsAppService(object()).list_templates()
+    with pytest.raises(
+        ConfigurationError,
+        match="requires whatsapp_business_account_id",
+    ):
+        WhatsAppService(
+            MetaWhatsAppGateway(access_token="meta-token", phone_number_id="123456789")
+        ).list_templates()
 
     result = WhatsAppSendResult(
         provider="dummy-wa",
@@ -1957,6 +2225,29 @@ def test_async_whatsapp_services_cover_delegation_and_configuration_errors() -> 
             recipient="254700000014",
             template_name="promo",
             language_code="en_US",
+        )
+        template_list_request = WhatsAppTemplateListRequest(
+            status=("approved",),
+            fields=("name", "category"),
+        )
+        template_create_request = WhatsAppTemplateCreateRequest(
+            name="shipment_update_async",
+            language="en_US",
+            category="utility",
+            components=(
+                WhatsAppTemplateComponentDefinition(type="body", text="Hello {{1}}"),
+            ),
+            parameter_format="positional",
+        )
+        template_update_request = WhatsAppTemplateUpdateRequest(
+            category="marketing",
+            components=(
+                WhatsAppTemplateComponentDefinition(type="body", text="Updated {{1}}"),
+            ),
+        )
+        template_delete_request = WhatsAppTemplateDeleteRequest(
+            name="shipment_update_async",
+            template_id="wa-template-async-2",
         )
         media_request = WhatsAppMediaRequest(
             recipient="254700000014",
@@ -2027,6 +2318,29 @@ def test_async_whatsapp_services_cover_delegation_and_configuration_errors() -> 
         assert service.provider == "dummy-wa"
         assert (await service.send_text(text_request, options=options)).submitted_count == 1
         assert (await service.send_template(template_request, options=options)).failed_count == 1
+        assert (
+            await service.list_templates(template_list_request, options=options)
+        ).templates[0].template_id == "wa-template-async-1"
+        assert (
+            await service.get_template(
+                "wa-template-async-1",
+                fields=("name",),
+                options=options,
+            )
+        ).parameter_format == "POSITIONAL"
+        assert (
+            await service.create_template(template_create_request, options=options)
+        ).template_id == "wa-template-async-2"
+        assert (
+            await service.update_template(
+                "wa-template-async-2",
+                template_update_request,
+                options=options,
+            )
+        ).category == "MARKETING"
+        assert (
+            await service.delete_template(template_delete_request, options=options)
+        ).deleted is True
         assert (await service.send_media(media_request, options=options)).submitted_count == 1
         assert (await service.send_location(location_request, options=options)).submitted_count == 1
         assert (await service.send_contacts(contacts_request, options=options)).submitted_count == 1
@@ -2072,6 +2386,15 @@ def test_async_whatsapp_services_cover_delegation_and_configuration_errors() -> 
         assert unconfigured.provider is None
         with pytest.raises(ConfigurationError, match="WhatsApp gateway is not configured"):
             await unconfigured.send_text(text_request)
+        with pytest.raises(ConfigurationError, match="template management"):
+            await AsyncWhatsAppService(object()).list_templates()
+        with pytest.raises(
+            ConfigurationError,
+            match="requires whatsapp_business_account_id",
+        ):
+            await AsyncWhatsAppService(
+                MetaWhatsAppGateway(access_token="meta-token", phone_number_id="123456789")
+            ).list_templates()
 
     asyncio.run(run())
 
@@ -2936,6 +3259,267 @@ def test_meta_gateway_builder_and_inbound_edge_paths() -> None:
     assert _build_media_upload_result("meta", {"id": "media-1"}).media_id == "media-1"
     assert _build_media_info("meta", "media-1", {"file_size": "12"}).file_size == 12
     assert _build_media_delete_result("meta", "media-1", {"success": 1}).deleted is True
+    assert _build_template_list_query(None) is None
+    assert _build_template_list_query(
+        WhatsAppTemplateListRequest(
+            category=("marketing", "utility"),
+            content="hello",
+            language=("en_US",),
+            name="shipment_update",
+            name_or_content="shipment",
+            quality_score=("green",),
+            since=10,
+            status=("approved", "paused"),
+            until=20,
+            fields=("name", "category"),
+            summary_fields=("total_count", "message_template_limit"),
+            limit=25,
+            before="prev-1",
+            after="next-1",
+            provider_options={"view": "full"},
+        )
+    ) == {
+        "view": "full",
+        "category": "MARKETING,UTILITY",
+        "content": "hello",
+        "language": "en_US",
+        "name": "shipment_update",
+        "name_or_content": "shipment",
+        "quality_score": "GREEN",
+        "since": "10",
+        "status": "APPROVED,PAUSED",
+        "until": "20",
+        "fields": "name,category",
+        "summary": "total_count,message_template_limit",
+        "limit": "25",
+        "before": "prev-1",
+        "after": "next-1",
+    }
+    assert _build_template_fields_query(("name", "status")) == {"fields": "name,status"}
+    assert _build_template_fields_query(()) is None
+    assert _build_template_button_definition(
+        WhatsAppTemplateButtonDefinition(
+            type="flow",
+            text="Open flow",
+            flow_id="flow-1",
+            flow_action="navigate",
+            navigate_screen="SCREEN_A",
+            supported_apps=({"package_name": "com.whatsapp", "signature_hash": "abc"},),
+            provider_options={"index": 0},
+        )
+        ) == {
+            "index": 0,
+            "type": "FLOW",
+            "text": "Open flow",
+            "flow_id": "flow-1",
+        "flow_action": "NAVIGATE",
+            "navigate_screen": "SCREEN_A",
+            "supported_apps": [{"package_name": "com.whatsapp", "signature_hash": "abc"}],
+        }
+    assert _build_template_button_definition(
+        WhatsAppTemplateButtonDefinition(
+            type="otp",
+            phone_number="+254700000031",
+            url="https://example.com/verify",
+            example=("123456",),
+            flow_name="flow-name",
+            flow_json="{\"screen\":\"OTP\"}",
+            otp_type="copy_code",
+            zero_tap_terms_accepted=True,
+        )
+    ) == {
+        "type": "OTP",
+        "phone_number": "+254700000031",
+        "url": "https://example.com/verify",
+        "example": ["123456"],
+        "flow_name": "flow-name",
+        "flow_json": "{\"screen\":\"OTP\"}",
+        "otp_type": "COPY_CODE",
+        "zero_tap_terms_accepted": True,
+    }
+    assert _build_template_component_definition(
+        WhatsAppTemplateComponentDefinition(
+            type="buttons",
+            buttons=(
+                WhatsAppTemplateButtonDefinition(type="quick_reply", text="Track"),
+            ),
+            example={"header_text": ["Track package"]},
+            provider_options={"add_security_recommendation": True},
+        )
+    ) == {
+        "add_security_recommendation": True,
+        "type": "BUTTONS",
+            "buttons": [{"type": "QUICK_REPLY", "text": "Track"}],
+            "example": {"header_text": ["Track package"]},
+        }
+    assert _build_template_component_definition(
+        WhatsAppTemplateComponentDefinition(
+            type="header",
+            format="text",
+            text="Header",
+        )
+    ) == {
+        "type": "HEADER",
+        "format": "TEXT",
+        "text": "Header",
+    }
+    assert _build_template_create_payload(
+        WhatsAppTemplateCreateRequest(
+            name="shipment_update",
+            language="en_US",
+            category="utility",
+            components=(
+                WhatsAppTemplateComponentDefinition(type="body", text="Hello {{1}}"),
+            ),
+            allow_category_change=True,
+            parameter_format="positional",
+            sub_category="custom",
+            message_send_ttl_seconds=600,
+            library_template_name="shipment_library",
+            is_primary_device_delivery_only=False,
+            creative_sourcing_spec={"source": "LIBRARY"},
+            library_template_body_inputs={"name": "Alice"},
+            library_template_button_inputs=({"code": "TRACK"},),
+            provider_options={"add_security_recommendation": True},
+        )
+    ) == {
+        "add_security_recommendation": True,
+        "name": "shipment_update",
+        "language": "en_US",
+        "category": "UTILITY",
+        "allow_category_change": True,
+        "components": [{"type": "BODY", "text": "Hello {{1}}"}],
+        "parameter_format": "POSITIONAL",
+        "sub_category": "CUSTOM",
+        "message_send_ttl_seconds": 600,
+        "library_template_name": "shipment_library",
+        "is_primary_device_delivery_only": False,
+        "creative_sourcing_spec": {"source": "LIBRARY"},
+        "library_template_body_inputs": {"name": "Alice"},
+        "library_template_button_inputs": [{"code": "TRACK"}],
+    }
+    assert _build_template_update_payload(
+        WhatsAppTemplateUpdateRequest(
+            category="marketing",
+            components=(
+                WhatsAppTemplateComponentDefinition(type="body", text="Updated {{1}}"),
+            ),
+            parameter_format="positional",
+            message_send_ttl_seconds=300,
+            creative_sourcing_spec={"source": "USER"},
+            provider_options={"allow_category_change": True},
+        )
+    ) == {
+        "allow_category_change": True,
+        "category": "MARKETING",
+        "components": [{"type": "BODY", "text": "Updated {{1}}"}],
+        "parameter_format": "POSITIONAL",
+        "message_send_ttl_seconds": 300,
+        "creative_sourcing_spec": {"source": "USER"},
+    }
+    assert _build_template_delete_query(
+        WhatsAppTemplateDeleteRequest(name="shipment_update", template_id="tmpl-1")
+    ) == {"name": "shipment_update", "hsm_id": "tmpl-1"}
+    assert _build_template_delete_query(
+        WhatsAppTemplateDeleteRequest(template_ids="tmpl-1")
+    ) == {"hsm_ids": '["tmpl-1"]'}
+    assert _build_template_delete_query(
+        WhatsAppTemplateDeleteRequest(template_ids=("tmpl-1", "tmpl-2"))
+    ) == {"hsm_ids": '["tmpl-1", "tmpl-2"]'}
+    managed_template = _build_managed_template(
+        "meta",
+        {
+            "id": "tmpl-1",
+            "name": "shipment_update",
+            "language": "en_US",
+            "category": "UTILITY",
+            "status": "APPROVED",
+            "components": [
+                {"type": "BODY", "text": "Hello {{1}}"},
+                {
+                    "type": "BUTTONS",
+                    "buttons": [
+                        {
+                            "type": "FLOW",
+                            "text": "Track",
+                            "flow_id": "flow-1",
+                            "flow_action": "NAVIGATE",
+                            "navigate_screen": "SCREEN_A",
+                        }
+                    ],
+                },
+            ],
+            "parameter_format": "POSITIONAL",
+            "quality_score": {"score": "GREEN"},
+            "cta_url_link_tracking_opted_out": True,
+            "message_send_ttl_seconds": "600",
+            "bid_spec": {"bid": "default"},
+        },
+    )
+    assert managed_template.template_id == "tmpl-1"
+    assert managed_template.quality_score == "GREEN"
+    assert managed_template.cta_url_link_tracking_opted_out is True
+    assert managed_template.components[1].buttons[0].flow_action == "NAVIGATE"
+    assert managed_template.metadata == {
+        "bid_spec": {"bid": "default"},
+        "quality_score_details": {"score": "GREEN"},
+    }
+    listed_templates = _build_template_list_result(
+        "meta",
+        {
+            "data": [
+                {
+                    "id": "tmpl-1",
+                    "name": "shipment_update",
+                    "language": "en_US",
+                    "category": "UTILITY",
+                    "status": "APPROVED",
+                }
+            ],
+            "paging": {"cursors": {"before": "prev-1", "after": "next-1"}},
+            "summary": {
+                "total_count": "1",
+                "message_template_count": "1",
+                "message_template_limit": "250",
+                "are_translations_complete": True,
+            },
+        },
+    )
+    assert listed_templates.before == "prev-1"
+    assert listed_templates.after == "next-1"
+    assert listed_templates.summary == WhatsAppTemplateListSummary(
+        total_count=1,
+        message_template_count=1,
+        message_template_limit=250,
+        are_translations_complete=True,
+        raw={
+            "total_count": "1",
+            "message_template_count": "1",
+            "message_template_limit": "250",
+            "are_translations_complete": True,
+        },
+    )
+    assert _build_template_mutation_result("meta", {"id": "tmpl-1"}).success is True
+    assert _build_template_mutation_result(
+        "meta",
+        {"success": False},
+        fallback_template_id="tmpl-fallback",
+    ).template_id == "tmpl-fallback"
+    query: dict[str, str] = {}
+    meta_gateway_module._set_query_value(query, "ratio", 2.5)
+    assert query == {"ratio": "2.5"}
+    assert _build_template_delete_result(
+        "meta",
+        WhatsAppTemplateDeleteRequest(template_ids=("tmpl-1", "tmpl-2")),
+        {"success": True},
+    ) == WhatsAppTemplateDeleteResult(
+        provider="meta",
+        deleted=True,
+        name=None,
+        template_id=None,
+        template_ids=("tmpl-1", "tmpl-2"),
+        raw={"success": True},
+    )
     with pytest.raises(ValueError, match="header is required"):
         _build_product_list_payload(
             WhatsAppProductListRequest(
@@ -2987,6 +3571,19 @@ def test_meta_gateway_builder_and_inbound_edge_paths() -> None:
         )
     with pytest.raises(GatewayError, match="media id"):
         _build_media_upload_result("meta", {})
+    with pytest.raises(ValueError, match="template update request must include at least one field"):
+        _build_template_update_payload(WhatsAppTemplateUpdateRequest())
+    with pytest.raises(ValueError, match="template_ids cannot be combined"):
+        _build_template_delete_query(
+            WhatsAppTemplateDeleteRequest(
+                name="shipment_update",
+                template_ids=("tmpl-1",),
+            )
+        )
+    with pytest.raises(ValueError, match="requires name or template_ids"):
+        _build_template_delete_query(WhatsAppTemplateDeleteRequest())
+    with pytest.raises(GatewayError, match="template id"):
+        _build_managed_template("meta", {"name": "missing-id"})
 
     assert (
         meta_gateway_module._build_inbound_message(
