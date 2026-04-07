@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import hmac
+import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -9,16 +12,27 @@ import httpx
 import pytest
 
 from noria_messaging import (
+    META_GRAPH_API_VERSION,
     AsyncMessagingClient,
     ConfigurationError,
     GatewayError,
     MessagingClient,
+    MetaWhatsAppGateway,
     OnfonSmsGateway,
     RequestOptions,
     RetryPolicy,
+    SmsGroupUpsertRequest,
     SmsMessage,
     SmsSendRequest,
+    SmsTemplateUpsertRequest,
+    WhatsAppTemplateComponent,
+    WhatsAppTemplateParameter,
+    WhatsAppTemplateRequest,
     WhatsAppTextRequest,
+    fastapi_parse_meta_delivery_events,
+    flask_parse_onfon_delivery_report,
+    resolve_meta_subscription_challenge,
+    verify_meta_signature,
 )
 
 
@@ -52,6 +66,30 @@ class FakeAsyncHttpClient:
 
     async def aclose(self) -> None:
         self.closed = True
+
+
+@dataclass(slots=True)
+class FakeFastAPIRequest:
+    query_params: dict[str, object] = field(default_factory=dict)
+    headers: dict[str, str] = field(default_factory=dict)
+    payload: bytes = b"{}"
+
+    async def body(self) -> bytes:
+        return self.payload
+
+
+@dataclass(slots=True)
+class FakeFlaskRequest:
+    args: dict[str, object] = field(default_factory=dict)
+    headers: dict[str, str] = field(default_factory=dict)
+    payload: bytes = b"{}"
+    json_payload: object = None
+
+    def get_data(self) -> bytes:
+        return self.payload
+
+    def get_json(self, silent: bool = True) -> object:
+        return self.json_payload
 
 
 def make_response(status_code: int, payload: Any) -> httpx.Response:
@@ -237,6 +275,108 @@ def test_onfon_gateway_parses_delivery_reports() -> None:
     assert report.provider_status == "DELIVRD"
 
 
+def test_onfon_gateway_lists_groups() -> None:
+    client = FakeSyncHttpClient(
+        responses=[
+            make_response(
+                200,
+                {
+                    "ErrorCode": 0,
+                    "ErrorDescription": "Success",
+                    "Data": [
+                        {
+                            "GroupId": 33,
+                            "GroupName": "Customers",
+                            "ContactCount": 21,
+                        }
+                    ],
+                },
+            )
+        ]
+    )
+
+    gateway = OnfonSmsGateway(
+        access_key="access-key",
+        api_key="api-key",
+        client_id="client-id",
+        client=client,
+    )
+
+    groups = gateway.list_groups()
+
+    assert len(groups) == 1
+    assert groups[0].group_id == "33"
+    assert groups[0].name == "Customers"
+    assert groups[0].contact_count == 21
+    assert client.calls[0]["method"] == "GET"
+    assert client.calls[0]["url"] == "https://api.onfonmedia.co.ke/v1/sms/Group"
+
+
+def test_onfon_gateway_creates_templates() -> None:
+    client = FakeSyncHttpClient(
+        responses=[
+            make_response(
+                200,
+                {
+                    "ErrorCode": 0,
+                    "ErrorDescription": "Success",
+                    "Data": "Template Added successfully.",
+                },
+            )
+        ]
+    )
+
+    gateway = OnfonSmsGateway(
+        access_key="access-key",
+        api_key="api-key",
+        client_id="client-id",
+        client=client,
+    )
+
+    result = gateway.create_template(
+        SmsTemplateUpsertRequest(
+            name="promo_offer",
+            body="Hello ##Name##, use code SAVE10 today.",
+        )
+    )
+
+    assert result.success is True
+    assert result.message == "Template Added successfully."
+    assert client.calls[0]["method"] == "POST"
+    assert client.calls[0]["json"]["TemplateName"] == "promo_offer"
+    assert client.calls[0]["json"]["MessageTemplate"] == "Hello ##Name##, use code SAVE10 today."
+
+
+def test_sms_service_exposes_onfon_group_management() -> None:
+    client = FakeSyncHttpClient(
+        responses=[
+            make_response(
+                200,
+                {
+                    "ErrorCode": 0,
+                    "ErrorDescription": "Success",
+                    "Data": "success#New Group added successfully.",
+                },
+            )
+        ]
+    )
+
+    messaging = MessagingClient(
+        sms=OnfonSmsGateway(
+            access_key="access-key",
+            api_key="api-key",
+            client_id="client-id",
+            client=client,
+        )
+    )
+
+    result = messaging.sms.create_group(SmsGroupUpsertRequest(name="Customers"))
+
+    assert result.success is True
+    assert result.message == "success#New Group added successfully."
+    assert client.calls[0]["json"]["GroupName"] == "Customers"
+
+
 def test_onfon_gateway_requires_sender_id_for_send() -> None:
     gateway = OnfonSmsGateway(
         access_key="access-key",
@@ -327,6 +467,221 @@ def test_async_messaging_client_sends_messages_with_httpx_async_client() -> None
         assert async_client.closed is False
 
     asyncio.run(run())
+
+
+def test_meta_whatsapp_gateway_sends_text_messages() -> None:
+    client = FakeSyncHttpClient(
+        responses=[
+            make_response(
+                200,
+                {
+                    "messaging_product": "whatsapp",
+                    "contacts": [{"input": "254712345678", "wa_id": "254712345678"}],
+                    "messages": [{"id": "wamid.123", "message_status": "accepted"}],
+                },
+            )
+        ]
+    )
+
+    gateway = MetaWhatsAppGateway(
+        access_token="meta-token",
+        phone_number_id="123456789",
+        client=client,
+    )
+
+    result = gateway.send_text(
+        WhatsAppTextRequest(
+            recipient="254712345678",
+            text="Hello from WhatsApp",
+            preview_url=False,
+            reply_to_message_id="wamid.original",
+        )
+    )
+
+    assert result.accepted is True
+    assert result.messages[0].provider_message_id == "wamid.123"
+    assert client.calls[0]["url"] == f"https://graph.facebook.com/{META_GRAPH_API_VERSION}/123456789/messages"
+    assert client.calls[0]["headers"]["Authorization"] == "Bearer meta-token"
+    assert client.calls[0]["json"]["messaging_product"] == "whatsapp"
+    assert client.calls[0]["json"]["text"]["body"] == "Hello from WhatsApp"
+    assert client.calls[0]["json"]["context"] == {"message_id": "wamid.original"}
+
+
+def test_meta_whatsapp_gateway_sends_templates() -> None:
+    client = FakeSyncHttpClient(
+        responses=[
+            make_response(
+                200,
+                {
+                    "messaging_product": "whatsapp",
+                    "contacts": [{"input": "254712345678", "wa_id": "254712345678"}],
+                    "messages": [{"id": "wamid.456", "message_status": "accepted"}],
+                },
+            )
+        ]
+    )
+
+    gateway = MetaWhatsAppGateway(
+        access_token="meta-token",
+        phone_number_id="123456789",
+        client=client,
+    )
+
+    result = gateway.send_template(
+        WhatsAppTemplateRequest(
+            recipient="254712345678",
+            template_name="shipment_update",
+            language_code="en_US",
+            components=[
+                WhatsAppTemplateComponent(
+                    type="body",
+                    parameters=[
+                        WhatsAppTemplateParameter(type="text", value="Alice"),
+                        WhatsAppTemplateParameter(type="text", value="Order-123"),
+                    ],
+                )
+            ],
+        )
+    )
+
+    assert result.messages[0].provider_message_id == "wamid.456"
+    template = client.calls[0]["json"]["template"]
+    assert template["name"] == "shipment_update"
+    assert template["language"] == {"code": "en_US"}
+    assert template["components"][0]["parameters"][0]["text"] == "Alice"
+
+
+def test_meta_whatsapp_gateway_parses_status_events() -> None:
+    gateway = MetaWhatsAppGateway(
+        access_token="meta-token",
+        phone_number_id="123456789",
+    )
+
+    events = gateway.parse_events(
+        {
+            "entry": [
+                {
+                    "changes": [
+                        {
+                            "value": {
+                                "statuses": [
+                                    {
+                                        "id": "wamid.123",
+                                        "status": "delivered",
+                                        "recipient_id": "254712345678",
+                                        "timestamp": "1712475856",
+                                        "conversation": {
+                                            "id": "conversation-1",
+                                            "origin": {"type": "service"},
+                                        },
+                                        "pricing": {
+                                            "pricing_model": "CBP",
+                                            "billable": True,
+                                            "category": "service",
+                                        },
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+    )
+
+    assert len(events) == 1
+    assert events[0].channel == "whatsapp"
+    assert events[0].provider == "meta"
+    assert events[0].provider_message_id == "wamid.123"
+    assert events[0].state == "delivered"
+    assert events[0].metadata["conversation_id"] == "conversation-1"
+
+
+def test_meta_signature_helpers_validate_payloads() -> None:
+    payload = json.dumps({"entry": [{"id": "1"}]}).encode("utf-8")
+    digest = hmac.new(b"app-secret", payload, hashlib.sha256).hexdigest()
+    header = f"sha256={digest}"
+
+    assert verify_meta_signature(payload, header, "app-secret") is True
+    assert verify_meta_signature(payload, "sha256=bad", "app-secret") is False
+    assert (
+        resolve_meta_subscription_challenge(
+            {
+                "hub.mode": "subscribe",
+                "hub.verify_token": "verify-me",
+                "hub.challenge": "1234",
+            },
+            "verify-me",
+        )
+        == "1234"
+    )
+
+
+def test_fastapi_meta_webhook_helper_verifies_signature_and_parses_events() -> None:
+    gateway = MetaWhatsAppGateway(
+        access_token="meta-token",
+        phone_number_id="123456789",
+        app_secret="app-secret",
+    )
+    payload = {
+        "entry": [
+            {
+                "changes": [
+                    {
+                        "value": {
+                            "statuses": [
+                                {
+                                    "id": "wamid.789",
+                                    "status": "read",
+                                    "recipient_id": "254712345678",
+                                    "timestamp": "1712475856",
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        ]
+    }
+    payload_bytes = json.dumps(payload).encode("utf-8")
+    digest = hmac.new(b"app-secret", payload_bytes, hashlib.sha256).hexdigest()
+    request = FakeFastAPIRequest(
+        headers={"x-hub-signature-256": f"sha256={digest}"},
+        payload=payload_bytes,
+    )
+
+    async def run() -> None:
+        events = await fastapi_parse_meta_delivery_events(
+            request,
+            gateway,
+            require_signature=True,
+        )
+        assert len(events) == 1
+        assert events[0].state == "read"
+
+    asyncio.run(run())
+
+
+def test_flask_onfon_webhook_helper_parses_delivery_reports() -> None:
+    gateway = OnfonSmsGateway(
+        access_key="access-key",
+        api_key="api-key",
+        client_id="client-id",
+    )
+    request = FakeFlaskRequest(
+        args={
+            "messageId": "msg-123",
+            "mobile": "254712345678",
+            "status": "DELIVRD",
+            "doneDate": "2026-04-08 09:31",
+        }
+    )
+
+    event = flask_parse_onfon_delivery_report(request, gateway)
+
+    assert event is not None
+    assert event.provider_message_id == "msg-123"
+    assert event.state == "delivered"
 
 
 def test_whatsapp_service_requires_gateway_configuration() -> None:

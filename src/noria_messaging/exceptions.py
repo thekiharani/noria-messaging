@@ -61,4 +61,9 @@ class GatewayError(NoriaMessagingError):
         self.response_body = response_body
 
 
+class WebhookVerificationError(NoriaMessagingError):
+    def __init__(self, message: str, *, details: object = None) -> None:
+        super().__init__(message, code="WEBHOOK_VERIFICATION_ERROR", details=details)
+
+
 NoriaSmsError = NoriaMessagingError

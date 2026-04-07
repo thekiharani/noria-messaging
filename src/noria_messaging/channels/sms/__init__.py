@@ -2,9 +2,11 @@ from .gateways import (
     ONFON_BASE_URL,
     ONFON_SMS_BASE_URL,
     AsyncSmsGateway,
+    AsyncSmsManagementGateway,
     OnfonGateway,
     OnfonSmsGateway,
     SmsGateway,
+    SmsManagementGateway,
 )
 from .models import (
     SendReceipt,
@@ -12,15 +14,21 @@ from .models import (
     SendSmsResult,
     SmsBalance,
     SmsBalanceEntry,
+    SmsGroup,
+    SmsGroupUpsertRequest,
+    SmsManagementResult,
     SmsMessage,
     SmsSendReceipt,
     SmsSendRequest,
     SmsSendResult,
+    SmsTemplate,
+    SmsTemplateUpsertRequest,
 )
 from .service import AsyncSmsService, SmsService
 
 __all__ = [
     "AsyncSmsGateway",
+    "AsyncSmsManagementGateway",
     "AsyncSmsService",
     "ONFON_BASE_URL",
     "ONFON_SMS_BASE_URL",
@@ -32,9 +40,15 @@ __all__ = [
     "SmsBalance",
     "SmsBalanceEntry",
     "SmsGateway",
+    "SmsGroup",
+    "SmsGroupUpsertRequest",
+    "SmsManagementGateway",
+    "SmsManagementResult",
     "SmsMessage",
     "SmsSendReceipt",
     "SmsSendRequest",
     "SmsSendResult",
     "SmsService",
+    "SmsTemplate",
+    "SmsTemplateUpsertRequest",
 ]

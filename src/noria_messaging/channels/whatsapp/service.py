@@ -39,8 +39,12 @@ class WhatsAppService:
     ) -> WhatsAppSendResult:
         return _require_gateway(self.gateway).send_template(request, options=options)
 
+    def parse_events(self, payload: Mapping[str, object]) -> tuple[DeliveryEvent, ...]:
+        return _require_gateway(self.gateway).parse_events(payload)
+
     def parse_event(self, payload: Mapping[str, object]) -> DeliveryEvent | None:
-        return _require_gateway(self.gateway).parse_event(payload)
+        events = self.parse_events(payload)
+        return events[0] if events else None
 
     def close(self) -> None:
         if self.gateway is not None:
@@ -77,8 +81,12 @@ class AsyncWhatsAppService:
     ) -> WhatsAppSendResult:
         return await _require_async_gateway(self.gateway).asend_template(request, options=options)
 
+    def parse_events(self, payload: Mapping[str, object]) -> tuple[DeliveryEvent, ...]:
+        return _require_async_gateway(self.gateway).parse_events(payload)
+
     def parse_event(self, payload: Mapping[str, object]) -> DeliveryEvent | None:
-        return _require_async_gateway(self.gateway).parse_event(payload)
+        events = self.parse_events(payload)
+        return events[0] if events else None
 
     async def aclose(self) -> None:
         if self.gateway is not None:

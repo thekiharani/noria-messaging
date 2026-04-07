@@ -19,7 +19,18 @@ from ....utils import (
     parse_decimal_from_text,
     to_object,
 )
-from ..models import SmsBalance, SmsBalanceEntry, SmsSendReceipt, SmsSendRequest, SmsSendResult
+from ..models import (
+    SmsBalance,
+    SmsBalanceEntry,
+    SmsGroup,
+    SmsGroupUpsertRequest,
+    SmsManagementResult,
+    SmsSendReceipt,
+    SmsSendRequest,
+    SmsSendResult,
+    SmsTemplate,
+    SmsTemplateUpsertRequest,
+)
 
 ONFON_SMS_BASE_URL = "https://api.onfonmedia.co.ke/v1/sms"
 ONFON_BASE_URL = ONFON_SMS_BASE_URL
@@ -119,6 +130,290 @@ class OnfonSmsGateway:
             )
         )
         return self._build_balance_result(response)
+
+    def list_groups(self, *, options: RequestOptions | None = None) -> tuple[SmsGroup, ...]:
+        response = self._request(
+            HttpRequestOptions(
+                path="/Group",
+                method="GET",
+                query=self._auth_query(),
+                headers=options.headers if options else None,
+                timeout_seconds=options.timeout_seconds if options else None,
+                retry=options.retry if options else None,
+            )
+        )
+        return self._build_group_list(response)
+
+    async def alist_groups(self, *, options: RequestOptions | None = None) -> tuple[SmsGroup, ...]:
+        response = await self._arequest(
+            HttpRequestOptions(
+                path="/Group",
+                method="GET",
+                query=self._auth_query(),
+                headers=options.headers if options else None,
+                timeout_seconds=options.timeout_seconds if options else None,
+                retry=options.retry if options else None,
+            )
+        )
+        return self._build_group_list(response)
+
+    def create_group(
+        self,
+        request: SmsGroupUpsertRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> SmsManagementResult:
+        response = self._request(
+            HttpRequestOptions(
+                path="/Group",
+                method="POST",
+                body=self._build_group_payload(request),
+                headers=options.headers if options else None,
+                timeout_seconds=options.timeout_seconds if options else None,
+                retry=options.retry if options else None,
+            )
+        )
+        return self._build_management_result(response)
+
+    async def acreate_group(
+        self,
+        request: SmsGroupUpsertRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> SmsManagementResult:
+        response = await self._arequest(
+            HttpRequestOptions(
+                path="/Group",
+                method="POST",
+                body=self._build_group_payload(request),
+                headers=options.headers if options else None,
+                timeout_seconds=options.timeout_seconds if options else None,
+                retry=options.retry if options else None,
+            )
+        )
+        return self._build_management_result(response)
+
+    def update_group(
+        self,
+        group_id: str,
+        request: SmsGroupUpsertRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> SmsManagementResult:
+        response = self._request(
+            HttpRequestOptions(
+                path="/Group",
+                method="PUT",
+                query={"id": _require_identifier(group_id, "group_id")},
+                body=self._build_group_payload(request),
+                headers=options.headers if options else None,
+                timeout_seconds=options.timeout_seconds if options else None,
+                retry=options.retry if options else None,
+            )
+        )
+        return self._build_management_result(response, resource_id=group_id)
+
+    async def aupdate_group(
+        self,
+        group_id: str,
+        request: SmsGroupUpsertRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> SmsManagementResult:
+        response = await self._arequest(
+            HttpRequestOptions(
+                path="/Group",
+                method="PUT",
+                query={"id": _require_identifier(group_id, "group_id")},
+                body=self._build_group_payload(request),
+                headers=options.headers if options else None,
+                timeout_seconds=options.timeout_seconds if options else None,
+                retry=options.retry if options else None,
+            )
+        )
+        return self._build_management_result(response, resource_id=group_id)
+
+    def delete_group(
+        self,
+        group_id: str,
+        *,
+        options: RequestOptions | None = None,
+    ) -> SmsManagementResult:
+        group_id = _require_identifier(group_id, "group_id")
+        response = self._request(
+            HttpRequestOptions(
+                path="/Group",
+                method="DELETE",
+                query={**self._auth_query(), "id": group_id},
+                headers=options.headers if options else None,
+                timeout_seconds=options.timeout_seconds if options else None,
+                retry=options.retry if options else None,
+            )
+        )
+        return self._build_management_result(response, resource_id=group_id)
+
+    async def adelete_group(
+        self,
+        group_id: str,
+        *,
+        options: RequestOptions | None = None,
+    ) -> SmsManagementResult:
+        group_id = _require_identifier(group_id, "group_id")
+        response = await self._arequest(
+            HttpRequestOptions(
+                path="/Group",
+                method="DELETE",
+                query={**self._auth_query(), "id": group_id},
+                headers=options.headers if options else None,
+                timeout_seconds=options.timeout_seconds if options else None,
+                retry=options.retry if options else None,
+            )
+        )
+        return self._build_management_result(response, resource_id=group_id)
+
+    def list_templates(self, *, options: RequestOptions | None = None) -> tuple[SmsTemplate, ...]:
+        response = self._request(
+            HttpRequestOptions(
+                path="/Template",
+                method="GET",
+                query=self._auth_query(),
+                headers=options.headers if options else None,
+                timeout_seconds=options.timeout_seconds if options else None,
+                retry=options.retry if options else None,
+            )
+        )
+        return self._build_template_list(response)
+
+    async def alist_templates(
+        self,
+        *,
+        options: RequestOptions | None = None,
+    ) -> tuple[SmsTemplate, ...]:
+        response = await self._arequest(
+            HttpRequestOptions(
+                path="/Template",
+                method="GET",
+                query=self._auth_query(),
+                headers=options.headers if options else None,
+                timeout_seconds=options.timeout_seconds if options else None,
+                retry=options.retry if options else None,
+            )
+        )
+        return self._build_template_list(response)
+
+    def create_template(
+        self,
+        request: SmsTemplateUpsertRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> SmsManagementResult:
+        response = self._request(
+            HttpRequestOptions(
+                path="/Template",
+                method="POST",
+                body=self._build_template_payload(request),
+                headers=options.headers if options else None,
+                timeout_seconds=options.timeout_seconds if options else None,
+                retry=options.retry if options else None,
+            )
+        )
+        return self._build_management_result(response)
+
+    async def acreate_template(
+        self,
+        request: SmsTemplateUpsertRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> SmsManagementResult:
+        response = await self._arequest(
+            HttpRequestOptions(
+                path="/Template",
+                method="POST",
+                body=self._build_template_payload(request),
+                headers=options.headers if options else None,
+                timeout_seconds=options.timeout_seconds if options else None,
+                retry=options.retry if options else None,
+            )
+        )
+        return self._build_management_result(response)
+
+    def update_template(
+        self,
+        template_id: str,
+        request: SmsTemplateUpsertRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> SmsManagementResult:
+        response = self._request(
+            HttpRequestOptions(
+                path="/Template",
+                method="PUT",
+                query={"id": _require_identifier(template_id, "template_id")},
+                body=self._build_template_payload(request),
+                headers=options.headers if options else None,
+                timeout_seconds=options.timeout_seconds if options else None,
+                retry=options.retry if options else None,
+            )
+        )
+        return self._build_management_result(response, resource_id=template_id)
+
+    async def aupdate_template(
+        self,
+        template_id: str,
+        request: SmsTemplateUpsertRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> SmsManagementResult:
+        response = await self._arequest(
+            HttpRequestOptions(
+                path="/Template",
+                method="PUT",
+                query={"id": _require_identifier(template_id, "template_id")},
+                body=self._build_template_payload(request),
+                headers=options.headers if options else None,
+                timeout_seconds=options.timeout_seconds if options else None,
+                retry=options.retry if options else None,
+            )
+        )
+        return self._build_management_result(response, resource_id=template_id)
+
+    def delete_template(
+        self,
+        template_id: str,
+        *,
+        options: RequestOptions | None = None,
+    ) -> SmsManagementResult:
+        template_id = _require_identifier(template_id, "template_id")
+        response = self._request(
+            HttpRequestOptions(
+                path="/Template",
+                method="DELETE",
+                query={**self._auth_query(), "id": template_id},
+                headers=options.headers if options else None,
+                timeout_seconds=options.timeout_seconds if options else None,
+                retry=options.retry if options else None,
+            )
+        )
+        return self._build_management_result(response, resource_id=template_id)
+
+    async def adelete_template(
+        self,
+        template_id: str,
+        *,
+        options: RequestOptions | None = None,
+    ) -> SmsManagementResult:
+        template_id = _require_identifier(template_id, "template_id")
+        response = await self._arequest(
+            HttpRequestOptions(
+                path="/Template",
+                method="DELETE",
+                query={**self._auth_query(), "id": template_id},
+                headers=options.headers if options else None,
+                timeout_seconds=options.timeout_seconds if options else None,
+                retry=options.retry if options else None,
+            )
+        )
+        return self._build_management_result(response, resource_id=template_id)
 
     def parse_delivery_report(self, payload: Mapping[str, object]) -> DeliveryEvent | None:
         normalized = normalize_query_mapping(payload)
@@ -248,6 +543,81 @@ class OnfonSmsGateway:
         )
         return SmsBalance(provider=self.provider_name, entries=entries, raw=response)
 
+    def _build_group_payload(self, request: SmsGroupUpsertRequest) -> dict[str, Any]:
+        name = _require_text(request.name, "name")
+        payload = dict(request.provider_options or {})
+        payload.update(
+            {
+                "GroupName": name,
+                "ApiKey": self.api_key,
+                "ClientId": self.client_id,
+            }
+        )
+        return payload
+
+    def _build_template_payload(self, request: SmsTemplateUpsertRequest) -> dict[str, Any]:
+        name = _require_text(request.name, "name")
+        body = _require_text(request.body, "body")
+        payload = dict(request.provider_options or {})
+        payload.update(
+            {
+                "TemplateName": name,
+                "MessageTemplate": body,
+                "ApiKey": self.api_key,
+                "ClientId": self.client_id,
+            }
+        )
+        return payload
+
+    def _build_group_list(self, response: Mapping[str, object]) -> tuple[SmsGroup, ...]:
+        rows = response.get("Data")
+        items = rows if isinstance(rows, list) else []
+        return tuple(
+            SmsGroup(
+                group_id=_coerce_identifier(item.get("GroupId")) or "",
+                name=coerce_string(item.get("GroupName")) or "",
+                contact_count=_coerce_int(item.get("ContactCount")),
+                raw=item,
+            )
+            for item in (to_object(row) for row in items)
+            if _coerce_identifier(item.get("GroupId")) is not None
+        )
+
+    def _build_template_list(self, response: Mapping[str, object]) -> tuple[SmsTemplate, ...]:
+        rows = response.get("Data")
+        items = rows if isinstance(rows, list) else []
+        return tuple(
+            SmsTemplate(
+                template_id=_coerce_identifier(item.get("TemplateId")) or "",
+                name=coerce_string(item.get("TemplateName")) or "",
+                body=coerce_string(item.get("MessageTemplate")) or "",
+                approved=_coerce_bool(item.get("IsApproved")),
+                active=_coerce_bool(item.get("IsActive")),
+                created_at=coerce_string(item.get("CreatededDate")),
+                approved_at=coerce_string(item.get("ApprovedDate")),
+                raw=item,
+            )
+            for item in (to_object(row) for row in items)
+            if _coerce_identifier(item.get("TemplateId")) is not None
+        )
+
+    def _build_management_result(
+        self,
+        response: Mapping[str, object],
+        *,
+        resource_id: str | None = None,
+    ) -> SmsManagementResult:
+        return SmsManagementResult(
+            provider=self.provider_name,
+            success=True,
+            message=(
+                coerce_string(response.get("Data"))
+                or coerce_string(response.get("ErrorDescription"))
+            ),
+            resource_id=_coerce_identifier(resource_id),
+            raw=response,
+        )
+
     def _request(self, options: HttpRequestOptions) -> dict[str, Any]:
         response = self._get_http().request(options)
         return self._validate_response(response)
@@ -329,6 +699,13 @@ def _require_text(value: str | None, field_name: str) -> str:
     return text
 
 
+def _require_identifier(value: str | None, field_name: str) -> str:
+    text = coerce_string(value)
+    if text is None:
+        raise ValueError(f"{field_name} is required.")
+    return text
+
+
 def _normalize_error_code(value: object) -> str | None:
     text = coerce_string(value)
     if text is None:
@@ -336,6 +713,36 @@ def _normalize_error_code(value: object) -> str | None:
     if text.isdigit():
         return text.zfill(3)
     return text
+
+
+def _coerce_identifier(value: object) -> str | None:
+    return coerce_string(value)
+
+
+def _coerce_int(value: object) -> int | None:
+    text = coerce_string(value)
+    if text is None:
+        return None
+    try:
+        return int(text)
+    except ValueError:
+        return None
+
+
+def _coerce_bool(value: object) -> bool | None:
+    if isinstance(value, bool):
+        return value
+
+    text = coerce_string(value)
+    if text is None:
+        return None
+
+    normalized = text.lower()
+    if normalized in {"true", "1", "yes"}:
+        return True
+    if normalized in {"false", "0", "no"}:
+        return False
+    return None
 
 
 def _is_success_payload(payload: Mapping[str, object]) -> bool:

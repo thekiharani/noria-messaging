@@ -13,6 +13,7 @@ class WhatsAppTextRequest:
     recipient: str
     text: str
     preview_url: bool | None = None
+    reply_to_message_id: str | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
     provider_options: Mapping[str, Any] = field(default_factory=dict)
 
@@ -20,7 +21,8 @@ class WhatsAppTextRequest:
 @dataclass(slots=True)
 class WhatsAppTemplateParameter:
     type: str
-    value: str
+    value: str | None = None
+    provider_options: Mapping[str, Any] = field(default_factory=dict)
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
 
@@ -38,6 +40,7 @@ class WhatsAppTemplateRequest:
     template_name: str
     language_code: str
     components: Sequence[WhatsAppTemplateComponent] = ()
+    reply_to_message_id: str | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
     provider_options: Mapping[str, Any] = field(default_factory=dict)
 
@@ -48,6 +51,7 @@ class WhatsAppSendReceipt:
     recipient: str
     status: WhatsAppSendStatus
     provider_message_id: str | None = None
+    provider_status: str | None = None
     conversation_id: str | None = None
     error_code: str | None = None
     error_description: str | None = None

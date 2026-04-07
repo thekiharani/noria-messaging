@@ -76,3 +76,45 @@ class SmsBalance:
 SendSmsRequest = SmsSendRequest
 SendReceipt = SmsSendReceipt
 SendSmsResult = SmsSendResult
+
+
+@dataclass(slots=True)
+class SmsGroup:
+    group_id: str
+    name: str
+    contact_count: int | None = None
+    raw: object = None
+
+
+@dataclass(slots=True)
+class SmsGroupUpsertRequest:
+    name: str
+    provider_options: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class SmsTemplate:
+    template_id: str
+    name: str
+    body: str
+    approved: bool | None = None
+    active: bool | None = None
+    created_at: str | None = None
+    approved_at: str | None = None
+    raw: object = None
+
+
+@dataclass(slots=True)
+class SmsTemplateUpsertRequest:
+    name: str
+    body: str
+    provider_options: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class SmsManagementResult:
+    provider: str
+    success: bool
+    message: str | None = None
+    resource_id: str | None = None
+    raw: object = None

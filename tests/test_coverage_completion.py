@@ -1,0 +1,1932 @@
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import hmac
+from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
+from typing import Any
+
+import httpx
+import pytest
+
+import noria_messaging.http as http_module
+from noria_messaging.channels.sms.gateways.onfon import (
+    OnfonSmsGateway,
+    _coerce_bool,
+    _coerce_int,
+    _is_success_code,
+    _is_success_payload,
+    _map_delivery_state,
+    _normalize_error_code,
+    _validate_send_request,
+)
+from noria_messaging.channels.sms.gateways.onfon import (
+    _require_identifier as require_onfon_identifier,
+)
+from noria_messaging.channels.sms.gateways.onfon import (
+    _require_text as require_onfon_text,
+)
+from noria_messaging.channels.sms.models import (
+    SmsBalance,
+    SmsGroup,
+    SmsGroupUpsertRequest,
+    SmsManagementResult,
+    SmsMessage,
+    SmsSendReceipt,
+    SmsSendRequest,
+    SmsSendResult,
+    SmsTemplate,
+    SmsTemplateUpsertRequest,
+)
+from noria_messaging.channels.sms.service import AsyncSmsService, SmsService
+from noria_messaging.channels.whatsapp.gateways.meta import (
+    MetaWhatsAppGateway,
+    _build_template_component,
+    _build_template_parameter,
+    _build_template_payload,
+    _build_text_payload,
+    _first_mapping,
+    _map_whatsapp_state,
+)
+from noria_messaging.channels.whatsapp.gateways.meta import (
+    _require_text as require_meta_text,
+)
+from noria_messaging.channels.whatsapp.models import (
+    WhatsAppSendReceipt,
+    WhatsAppSendResult,
+    WhatsAppTemplateComponent,
+    WhatsAppTemplateParameter,
+    WhatsAppTemplateRequest,
+    WhatsAppTextRequest,
+)
+from noria_messaging.channels.whatsapp.service import AsyncWhatsAppService, WhatsAppService
+from noria_messaging.client import AsyncMessagingClient, MessagingClient
+from noria_messaging.events import DeliveryEvent
+from noria_messaging.exceptions import (
+    ApiError,
+    ConfigurationError,
+    GatewayError,
+    NetworkError,
+    TimeoutError,
+    WebhookVerificationError,
+)
+from noria_messaging.http import (
+    AsyncHttpClient,
+    HttpClient,
+    _build_request_kwargs,
+    _calculate_retry_delay,
+    _normalize_hook_sequence,
+    _resolve_retry_policy,
+    _should_retry,
+)
+from noria_messaging.types import (
+    Hooks,
+    HttpRequestOptions,
+    RequestOptions,
+    RetryDecisionContext,
+    RetryPolicy,
+)
+from noria_messaging.utils import (
+    append_path,
+    build_error_message,
+    coerce_string,
+    first_text,
+    format_schedule_time,
+    merge_headers,
+    normalize_query_mapping,
+    parse_decimal_from_text,
+    parse_response_body,
+)
+from noria_messaging.webhooks.fastapi import (
+    fastapi_parse_meta_delivery_events,
+    fastapi_parse_onfon_delivery_report,
+    fastapi_resolve_meta_subscription_challenge,
+)
+from noria_messaging.webhooks.flask import (
+    flask_parse_meta_delivery_events,
+    flask_parse_onfon_delivery_report,
+    flask_resolve_meta_subscription_challenge,
+)
+from noria_messaging.webhooks.meta import (
+    require_valid_meta_signature,
+    resolve_meta_subscription_challenge,
+    verify_meta_signature,
+)
+from noria_messaging.webhooks.onfon import parse_onfon_delivery_report
+
+
+def make_response(status_code: int, payload: Any) -> httpx.Response:
+    return httpx.Response(
+        status_code=status_code,
+        json=payload,
+        headers={"content-type": "application/json"},
+    )
+
+
+@dataclass(slots=True)
+class SequencedSyncRequester:
+    actions: list[object]
+    calls: list[dict[str, Any]] = field(default_factory=list)
+    closed: bool = False
+
+    def request(self, **kwargs: Any) -> httpx.Response:
+        self.calls.append(kwargs)
+        if not self.actions:
+            raise AssertionError("No sync actions left.")
+        action = self.actions.pop(0)
+        if isinstance(action, Exception):
+            raise action
+        return action
+
+    def close(self) -> None:
+        self.closed = True
+
+
+@dataclass(slots=True)
+class SequencedAsyncRequester:
+    actions: list[object]
+    calls: list[dict[str, Any]] = field(default_factory=list)
+    closed: bool = False
+
+    async def request(self, **kwargs: Any) -> httpx.Response:
+        self.calls.append(kwargs)
+        if not self.actions:
+            raise AssertionError("No async actions left.")
+        action = self.actions.pop(0)
+        if isinstance(action, Exception):
+            raise action
+        return action
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
+@dataclass(slots=True)
+class FakeFastAPIRequest:
+    query_params: dict[str, object] = field(default_factory=dict)
+    headers: dict[str, str] = field(default_factory=dict)
+    payload: bytes = b"{}"
+
+    async def body(self) -> bytes:
+        return self.payload
+
+
+@dataclass(slots=True)
+class FakeFlaskRequest:
+    args: dict[str, object] = field(default_factory=dict)
+    headers: dict[str, str] = field(default_factory=dict)
+    payload: bytes = b"{}"
+    json_payload: object = None
+
+    def get_data(self) -> bytes:
+        return self.payload
+
+    def get_json(self, silent: bool = True) -> object:
+        return self.json_payload
+
+
+@dataclass(slots=True)
+class DummySmsGateway:
+    provider_name: str = "dummy-sms"
+    closed: bool = False
+    calls: list[tuple[str, object]] = field(default_factory=list)
+
+    def send(
+        self,
+        request: SmsSendRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> SmsSendResult:
+        self.calls.append(("send", options))
+        return SmsSendResult(
+            provider=self.provider_name,
+            accepted=True,
+            error_code=None,
+            error_description=None,
+            messages=(
+                SmsSendReceipt(
+                    provider=self.provider_name,
+                    recipient=request.messages[0].recipient,
+                    text=request.messages[0].text,
+                    status="submitted",
+                    provider_message_id="sms-1",
+                ),
+            ),
+        )
+
+    def get_balance(self, *, options: RequestOptions | None = None) -> SmsBalance:
+        self.calls.append(("get_balance", options))
+        return SmsBalance(provider=self.provider_name, entries=())
+
+    def parse_delivery_report(self, payload: dict[str, object]) -> DeliveryEvent:
+        self.calls.append(("parse_delivery_report", payload))
+        return DeliveryEvent(
+            channel="sms",
+            provider=self.provider_name,
+            provider_message_id="sms-1",
+            state="delivered",
+            recipient="254700000001",
+        )
+
+    def close(self) -> None:
+        self.closed = True
+
+
+@dataclass(slots=True)
+class DummySmsManagementGateway(DummySmsGateway):
+    def list_groups(self, *, options: RequestOptions | None = None) -> tuple[SmsGroup, ...]:
+        self.calls.append(("list_groups", options))
+        return (SmsGroup(group_id="1", name="Customers"),)
+
+    def create_group(
+        self,
+        request: SmsGroupUpsertRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> SmsManagementResult:
+        self.calls.append(("create_group", options))
+        return SmsManagementResult(provider=self.provider_name, success=True, message=request.name)
+
+    def update_group(
+        self,
+        group_id: str,
+        request: SmsGroupUpsertRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> SmsManagementResult:
+        self.calls.append(("update_group", options))
+        return SmsManagementResult(
+            provider=self.provider_name,
+            success=True,
+            message=request.name,
+            resource_id=group_id,
+        )
+
+    def delete_group(
+        self,
+        group_id: str,
+        *,
+        options: RequestOptions | None = None,
+    ) -> SmsManagementResult:
+        self.calls.append(("delete_group", options))
+        return SmsManagementResult(
+            provider=self.provider_name,
+            success=True,
+            resource_id=group_id,
+        )
+
+    def list_templates(
+        self,
+        *,
+        options: RequestOptions | None = None,
+    ) -> tuple[SmsTemplate, ...]:
+        self.calls.append(("list_templates", options))
+        return (SmsTemplate(template_id="1", name="welcome", body="Hello"),)
+
+    def create_template(
+        self,
+        request: SmsTemplateUpsertRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> SmsManagementResult:
+        self.calls.append(("create_template", options))
+        return SmsManagementResult(provider=self.provider_name, success=True, message=request.name)
+
+    def update_template(
+        self,
+        template_id: str,
+        request: SmsTemplateUpsertRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> SmsManagementResult:
+        self.calls.append(("update_template", options))
+        return SmsManagementResult(
+            provider=self.provider_name,
+            success=True,
+            message=request.name,
+            resource_id=template_id,
+        )
+
+    def delete_template(
+        self,
+        template_id: str,
+        *,
+        options: RequestOptions | None = None,
+    ) -> SmsManagementResult:
+        self.calls.append(("delete_template", options))
+        return SmsManagementResult(
+            provider=self.provider_name,
+            success=True,
+            resource_id=template_id,
+        )
+
+
+@dataclass(slots=True)
+class DummyAsyncSmsGateway:
+    provider_name: str = "dummy-sms"
+    closed: bool = False
+    calls: list[tuple[str, object]] = field(default_factory=list)
+
+    async def asend(
+        self,
+        request: SmsSendRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> SmsSendResult:
+        self.calls.append(("asend", options))
+        return SmsSendResult(
+            provider=self.provider_name,
+            accepted=True,
+            error_code=None,
+            error_description=None,
+            messages=(
+                SmsSendReceipt(
+                    provider=self.provider_name,
+                    recipient=request.messages[0].recipient,
+                    text=request.messages[0].text,
+                    status="submitted",
+                    provider_message_id="sms-async-1",
+                ),
+            ),
+        )
+
+    async def aget_balance(self, *, options: RequestOptions | None = None) -> SmsBalance:
+        self.calls.append(("aget_balance", options))
+        return SmsBalance(provider=self.provider_name, entries=())
+
+    def parse_delivery_report(self, payload: dict[str, object]) -> DeliveryEvent:
+        self.calls.append(("parse_delivery_report", payload))
+        return DeliveryEvent(
+            channel="sms",
+            provider=self.provider_name,
+            provider_message_id="sms-async-1",
+            state="submitted",
+            recipient="254700000002",
+        )
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
+@dataclass(slots=True)
+class DummyAsyncSmsManagementGateway(DummyAsyncSmsGateway):
+    async def alist_groups(
+        self,
+        *,
+        options: RequestOptions | None = None,
+    ) -> tuple[SmsGroup, ...]:
+        self.calls.append(("alist_groups", options))
+        return (SmsGroup(group_id="2", name="Leads"),)
+
+    async def acreate_group(
+        self,
+        request: SmsGroupUpsertRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> SmsManagementResult:
+        self.calls.append(("acreate_group", options))
+        return SmsManagementResult(provider=self.provider_name, success=True, message=request.name)
+
+    async def aupdate_group(
+        self,
+        group_id: str,
+        request: SmsGroupUpsertRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> SmsManagementResult:
+        self.calls.append(("aupdate_group", options))
+        return SmsManagementResult(
+            provider=self.provider_name,
+            success=True,
+            message=request.name,
+            resource_id=group_id,
+        )
+
+    async def adelete_group(
+        self,
+        group_id: str,
+        *,
+        options: RequestOptions | None = None,
+    ) -> SmsManagementResult:
+        self.calls.append(("adelete_group", options))
+        return SmsManagementResult(
+            provider=self.provider_name,
+            success=True,
+            resource_id=group_id,
+        )
+
+    async def alist_templates(
+        self,
+        *,
+        options: RequestOptions | None = None,
+    ) -> tuple[SmsTemplate, ...]:
+        self.calls.append(("alist_templates", options))
+        return (SmsTemplate(template_id="2", name="promo", body="Promo"),)
+
+    async def acreate_template(
+        self,
+        request: SmsTemplateUpsertRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> SmsManagementResult:
+        self.calls.append(("acreate_template", options))
+        return SmsManagementResult(provider=self.provider_name, success=True, message=request.name)
+
+    async def aupdate_template(
+        self,
+        template_id: str,
+        request: SmsTemplateUpsertRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> SmsManagementResult:
+        self.calls.append(("aupdate_template", options))
+        return SmsManagementResult(
+            provider=self.provider_name,
+            success=True,
+            message=request.name,
+            resource_id=template_id,
+        )
+
+    async def adelete_template(
+        self,
+        template_id: str,
+        *,
+        options: RequestOptions | None = None,
+    ) -> SmsManagementResult:
+        self.calls.append(("adelete_template", options))
+        return SmsManagementResult(
+            provider=self.provider_name,
+            success=True,
+            resource_id=template_id,
+        )
+
+
+@dataclass(slots=True)
+class DummyWhatsAppGateway:
+    provider_name: str = "dummy-wa"
+    closed: bool = False
+    calls: list[tuple[str, object]] = field(default_factory=list)
+
+    def send_text(
+        self,
+        request: WhatsAppTextRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult:
+        self.calls.append(("send_text", options))
+        return WhatsAppSendResult(
+            provider=self.provider_name,
+            accepted=True,
+            error_code=None,
+            error_description=None,
+            messages=(
+                WhatsAppSendReceipt(
+                    provider=self.provider_name,
+                    recipient=request.recipient,
+                    status="submitted",
+                    provider_message_id="wa-1",
+                ),
+            ),
+        )
+
+    def send_template(
+        self,
+        request: WhatsAppTemplateRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult:
+        self.calls.append(("send_template", options))
+        return WhatsAppSendResult(
+            provider=self.provider_name,
+            accepted=True,
+            error_code=None,
+            error_description=None,
+            messages=(
+                WhatsAppSendReceipt(
+                    provider=self.provider_name,
+                    recipient=request.recipient,
+                    status="failed",
+                    provider_message_id="wa-2",
+                ),
+            ),
+        )
+
+    def parse_events(self, payload: dict[str, object]) -> tuple[DeliveryEvent, ...]:
+        self.calls.append(("parse_events", payload))
+        return (
+            DeliveryEvent(
+                channel="whatsapp",
+                provider=self.provider_name,
+                provider_message_id="wa-evt-1",
+                state="read",
+                recipient="254700000003",
+            ),
+        )
+
+    def parse_event(self, payload: dict[str, object]) -> DeliveryEvent | None:
+        events = self.parse_events(payload)
+        return events[0] if events else None
+
+    def close(self) -> None:
+        self.closed = True
+
+
+@dataclass(slots=True)
+class DummyAsyncWhatsAppGateway:
+    provider_name: str = "dummy-wa"
+    closed: bool = False
+    calls: list[tuple[str, object]] = field(default_factory=list)
+
+    async def asend_text(
+        self,
+        request: WhatsAppTextRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult:
+        self.calls.append(("asend_text", options))
+        return WhatsAppSendResult(
+            provider=self.provider_name,
+            accepted=True,
+            error_code=None,
+            error_description=None,
+            messages=(
+                WhatsAppSendReceipt(
+                    provider=self.provider_name,
+                    recipient=request.recipient,
+                    status="submitted",
+                    provider_message_id="wa-async-1",
+                ),
+            ),
+        )
+
+    async def asend_template(
+        self,
+        request: WhatsAppTemplateRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult:
+        self.calls.append(("asend_template", options))
+        return WhatsAppSendResult(
+            provider=self.provider_name,
+            accepted=True,
+            error_code=None,
+            error_description=None,
+            messages=(
+                WhatsAppSendReceipt(
+                    provider=self.provider_name,
+                    recipient=request.recipient,
+                    status="failed",
+                    provider_message_id="wa-async-2",
+                ),
+            ),
+        )
+
+    def parse_events(self, payload: dict[str, object]) -> tuple[DeliveryEvent, ...]:
+        self.calls.append(("parse_events", payload))
+        return (
+            DeliveryEvent(
+                channel="whatsapp",
+                provider=self.provider_name,
+                provider_message_id="wa-evt-async-1",
+                state="delivered",
+                recipient="254700000004",
+            ),
+        )
+
+    def parse_event(self, payload: dict[str, object]) -> DeliveryEvent | None:
+        events = self.parse_events(payload)
+        return events[0] if events else None
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
+def test_utils_exceptions_and_signature_error_paths() -> None:
+    assert append_path("https://api.example.com/", "https://override.example.com/items") == (
+        "https://override.example.com/items"
+    )
+    assert coerce_string("  hello ") == "hello"
+    assert coerce_string("   ") is None
+    assert first_text(None, "  ", "value") == "value"
+    assert format_schedule_time(" 2026-04-08 09:30 ") == "2026-04-08 09:30"
+    with pytest.raises(ValueError, match="schedule_at must not be empty"):
+        format_schedule_time(" ")
+    assert parse_response_body(make_response(200, {"ok": True})) == {"ok": True}
+    assert (
+        parse_response_body(
+            httpx.Response(204, text="", headers={"content-type": "text/plain"})
+        )
+        is None
+    )
+    assert parse_response_body(
+        httpx.Response(200, text='{"message":"parsed"}', headers={"content-type": "text/plain"})
+    ) == {"message": "parsed"}
+    assert parse_response_body(
+        httpx.Response(200, text="plain-text", headers={"content-type": "text/plain"})
+    ) == "plain-text"
+    assert build_error_message(400, {"ErrorDescription": "Bad request"}) == "Bad request"
+    assert build_error_message(500, {}) == "Request failed with status 500"
+    assert merge_headers(None, {"A": "1"}, {"A": "2", "B": "3"}) == {"A": "2", "B": "3"}
+    assert parse_decimal_from_text("KES 1,234.50") == Decimal("1234.50")
+    assert parse_decimal_from_text("nothing here") is None
+    assert parse_decimal_from_text(None) is None
+    assert normalize_query_mapping({"a": [" x "], "b": [], "c": 7}) == {
+        "a": "x",
+        "b": None,
+        "c": "7",
+    }
+
+    configuration_error = ConfigurationError("bad config", details={"field": "token"})
+    network_error = NetworkError("network issue", details={"retryable": True})
+    timeout_error = TimeoutError("timeout")
+    webhook_error = WebhookVerificationError("invalid webhook")
+    assert configuration_error.code == "CONFIGURATION_ERROR"
+    assert configuration_error.details == {"field": "token"}
+    assert network_error.code == "NETWORK_ERROR"
+    assert timeout_error.code == "TIMEOUT_ERROR"
+    assert webhook_error.code == "WEBHOOK_VERIFICATION_ERROR"
+
+    with pytest.raises(ConfigurationError, match="verify_token is required"):
+        resolve_meta_subscription_challenge({}, "")
+    assert resolve_meta_subscription_challenge({"hub.mode": "ping"}, "verify-me") is None
+    assert (
+        resolve_meta_subscription_challenge(
+            {
+                "hub.mode": "subscribe",
+                "hub.verify_token": "wrong",
+                "hub.challenge": "123",
+            },
+            "verify-me",
+        )
+        is None
+    )
+
+    with pytest.raises(ConfigurationError, match="app_secret is required"):
+        verify_meta_signature(b"{}", "sha256=abc", "")
+    assert verify_meta_signature(b"{}", None, "secret") is False
+    assert verify_meta_signature(b"{}", "sha1=abc", "secret") is False
+    with pytest.raises(WebhookVerificationError, match="signature verification failed"):
+        require_valid_meta_signature(b"{}", "sha256=bad", "secret")
+
+
+def test_http_helper_functions_cover_retry_resolution_and_request_building() -> None:
+    def hook(context: Any) -> None:
+        return None
+
+    assert _normalize_hook_sequence(None) == []
+    assert _normalize_hook_sequence(hook) == [hook]
+    assert _normalize_hook_sequence([hook]) == [hook]
+
+    default_retry = RetryPolicy(
+        max_attempts=3,
+        retry_methods=("GET",),
+        retry_on_statuses=(500,),
+        retry_on_network_error=True,
+        base_delay_seconds=1.0,
+        max_delay_seconds=5.0,
+        backoff_multiplier=3.0,
+        should_retry=lambda context: context.status != 429,
+    )
+    override_retry = RetryPolicy(
+        max_attempts=2,
+        retry_methods=(),
+        retry_on_statuses=(),
+        retry_on_network_error=False,
+        base_delay_seconds=0.5,
+        max_delay_seconds=1.0,
+        backoff_multiplier=2.0,
+    )
+
+    assert _resolve_retry_policy(default_retry, False) is None
+    assert _resolve_retry_policy(default_retry, True) is default_retry
+    assert _resolve_retry_policy(default_retry, None) is default_retry
+    assert _resolve_retry_policy(None, override_retry) is override_retry
+    resolved = _resolve_retry_policy(default_retry, override_retry)
+    assert resolved is not None
+    assert resolved.max_attempts == 2
+    assert resolved.retry_methods == ("GET",)
+    assert resolved.retry_on_statuses == (500,)
+    assert resolved.should_retry is default_retry.should_retry
+
+    assert (
+        _should_retry(
+            None,
+            RetryDecisionContext(attempt=1, max_attempts=2, method="GET", url="https://api.test"),
+        )
+        is False
+    )
+    assert (
+        _should_retry(
+            default_retry,
+            RetryDecisionContext(attempt=2, max_attempts=2, method="GET", url="https://api.test"),
+        )
+        is False
+    )
+    assert (
+        _should_retry(
+            RetryPolicy(max_attempts=2, retry_methods=("POST",), retry_on_statuses=(500,)),
+            RetryDecisionContext(
+                attempt=1,
+                max_attempts=2,
+                method="GET",
+                url="https://api.test",
+                status=500,
+            ),
+        )
+        is False
+    )
+    assert (
+        _should_retry(
+            RetryPolicy(max_attempts=2, retry_methods=("GET",), retry_on_statuses=(503,)),
+            RetryDecisionContext(
+                attempt=1,
+                max_attempts=2,
+                method="GET",
+                url="https://api.test",
+                status=500,
+            ),
+        )
+        is False
+    )
+    assert (
+        _should_retry(
+            RetryPolicy(max_attempts=2, retry_methods=("GET",), retry_on_network_error=False),
+            RetryDecisionContext(
+                attempt=1,
+                max_attempts=2,
+                method="GET",
+                url="https://api.test",
+                error=RuntimeError("boom"),
+            ),
+        )
+        is False
+    )
+    assert (
+        _should_retry(
+            RetryPolicy(
+                max_attempts=2,
+                retry_methods=("GET",),
+                retry_on_statuses=(500,),
+                should_retry=lambda context: False,
+            ),
+            RetryDecisionContext(
+                attempt=1,
+                max_attempts=2,
+                method="GET",
+                url="https://api.test",
+                status=500,
+            ),
+        )
+        is False
+    )
+    assert (
+        _should_retry(
+            RetryPolicy(max_attempts=2, retry_methods=("GET",), retry_on_statuses=(500,)),
+            RetryDecisionContext(
+                attempt=1,
+                max_attempts=2,
+                method="GET",
+                url="https://api.test",
+                status=500,
+            ),
+        )
+        is True
+    )
+    assert _calculate_retry_delay(None, 1) == 0.0
+    assert (
+        _calculate_retry_delay(
+            RetryPolicy(base_delay_seconds=2.0, max_delay_seconds=3.0, backoff_multiplier=4.0),
+            2,
+        )
+        == 3.0
+    )
+
+    text_kwargs = _build_request_kwargs(
+        method="POST",
+        url="https://api.test/messages",
+        headers={"X-Test": "1"},
+        query={"page": 1, "skip": None},
+        body="hello",
+        timeout_seconds=5.0,
+    )
+    assert text_kwargs["params"] == {"page": 1}
+    assert text_kwargs["content"] == "hello"
+    assert text_kwargs["headers"]["Content-Type"] == "text/plain;charset=UTF-8"
+
+    json_kwargs = _build_request_kwargs(
+        method="POST",
+        url="https://api.test/messages",
+        headers={"X-Test": "1"},
+        query=None,
+        body={"message": "hello"},
+        timeout_seconds=None,
+    )
+    assert json_kwargs["json"] == {"message": "hello"}
+    assert json_kwargs["headers"]["Content-Type"] == "application/json"
+
+    preserved_headers = _build_request_kwargs(
+        method="POST",
+        url="https://api.test/messages",
+        headers={"content-type": "application/xml"},
+        query=None,
+        body=b"<xml />",
+        timeout_seconds=None,
+    )
+    assert preserved_headers["headers"] == {"content-type": "application/xml"}
+
+
+def test_http_client_sync_paths_cover_retries_hooks_and_context_manager(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = httpx.Request("GET", "https://api.test/items")
+    requester = SequencedSyncRequester(
+        actions=[
+            httpx.ReadTimeout("timed out", request=request),
+            make_response(200, {"ok": True}),
+        ]
+    )
+    before_attempts: list[int] = []
+    after_statuses: list[int] = []
+    error_types: list[str] = []
+    sleep_calls: list[float] = []
+
+    def before_hook(context: Any) -> None:
+        before_attempts.append(context.attempt)
+
+    def after_hook(context: Any) -> None:
+        after_statuses.append(context.response.status_code)
+
+    def error_hook(context: Any) -> None:
+        error_types.append(type(context.error).__name__)
+
+    monkeypatch.setattr(http_module.time, "sleep", lambda delay: sleep_calls.append(delay))
+
+    client = HttpClient(
+        base_url="https://api.test",
+        client=requester,
+        default_headers={"X-Default": "1"},
+        retry=RetryPolicy(
+            max_attempts=2,
+            retry_methods=("GET",),
+            retry_on_network_error=True,
+            base_delay_seconds=0.25,
+        ),
+        hooks=Hooks(
+            before_request=before_hook,
+            after_response=[after_hook],
+            on_error=error_hook,
+        ),
+    )
+
+    result = client.request(
+        HttpRequestOptions(
+            path="/items",
+            method="GET",
+            headers={"X-Extra": "2"},
+            query={"page": 1},
+            retry=True,
+        )
+    )
+
+    assert result == {"ok": True}
+    assert before_attempts == [1, 2]
+    assert after_statuses == [200]
+    assert error_types == ["TimeoutError"]
+    assert sleep_calls == [0.25]
+    assert requester.calls[0]["headers"] == {"X-Default": "1", "X-Extra": "2"}
+    assert requester.calls[0]["params"] == {"page": 1}
+
+    failing_requester = SequencedSyncRequester(
+        actions=[
+            httpx.ConnectError("boom", request=httpx.Request("POST", "https://api.test/fail"))
+        ]
+    )
+    failing_client = HttpClient(base_url="https://api.test", client=failing_requester)
+    with pytest.raises(NetworkError, match="Request failed"):
+        failing_client.request(HttpRequestOptions(path="/fail", method="POST"))
+
+    timeout_failure_client = HttpClient(
+        base_url="https://api.test",
+        client=SequencedSyncRequester(
+            actions=[
+                httpx.ReadTimeout(
+                    "timed out",
+                    request=httpx.Request("GET", "https://api.test/timeout"),
+                )
+            ]
+        ),
+        retry=RetryPolicy(max_attempts=1, retry_methods=("GET",), retry_on_network_error=True),
+    )
+    with pytest.raises(TimeoutError, match="Request timed out"):
+        timeout_failure_client.request(HttpRequestOptions(path="/timeout", method="GET"))
+
+    network_retry_client = HttpClient(
+        base_url="https://api.test",
+        client=SequencedSyncRequester(
+            actions=[
+                httpx.ConnectError(
+                    "boom",
+                    request=httpx.Request("GET", "https://api.test/network-retry"),
+                ),
+                make_response(200, {"ok": "network-retried"}),
+            ]
+        ),
+        retry=RetryPolicy(max_attempts=2, retry_methods=("GET",), retry_on_network_error=True),
+    )
+    assert network_retry_client.request(
+        HttpRequestOptions(path="/network-retry", method="GET")
+    ) == {"ok": "network-retried"}
+
+    api_retry_requester = SequencedSyncRequester(
+        actions=[
+            make_response(503, {"detail": "temporary"}),
+            make_response(200, {"ok": "retried"}),
+        ]
+    )
+    api_retry_client = HttpClient(
+        base_url="https://api.test",
+        client=api_retry_requester,
+        retry=RetryPolicy(
+            max_attempts=2,
+            retry_methods=("GET",),
+            retry_on_statuses=(503,),
+        ),
+    )
+    assert api_retry_client.request(HttpRequestOptions(path="/retry", method="GET")) == {
+        "ok": "retried"
+    }
+
+    api_failure_client = HttpClient(
+        base_url="https://api.test",
+        client=SequencedSyncRequester(actions=[make_response(400, {"message": "bad request"})]),
+    )
+    with pytest.raises(ApiError, match="bad request") as exc:
+        api_failure_client.request(HttpRequestOptions(path="/bad", method="GET"))
+    assert exc.value.status_code == 400
+    assert exc.value.response_body == {"message": "bad request"}
+
+    owned_requester = SequencedSyncRequester(actions=[])
+    monkeypatch.setattr(http_module.httpx, "Client", lambda: owned_requester)
+    with HttpClient(base_url="https://api.test") as owned_client:
+        assert owned_client.client is owned_requester
+    assert owned_requester.closed is True
+
+    stubborn_requester = SequencedSyncRequester(
+        actions=[make_response(503, {"detail": "still bad"})]
+    )
+    stubborn_client = HttpClient(
+        base_url="https://api.test",
+        client=stubborn_requester,
+        retry=RetryPolicy(max_attempts=1, retry_methods=("GET",), retry_on_statuses=(503,)),
+    )
+    monkeypatch.setattr(HttpClient, "_should_retry", lambda self, policy, context: True)
+    monkeypatch.setattr(HttpClient, "_sleep_before_retry", lambda self, policy, attempt: None)
+    with pytest.raises(RuntimeError, match="unreachable retry state"):
+        stubborn_client.request(HttpRequestOptions(path="/never-stop", method="GET"))
+
+
+def test_http_client_async_paths_cover_retries_hooks_and_context_manager(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def run() -> None:
+        timeout_request = httpx.Request("GET", "https://api.test/items")
+        requester = SequencedAsyncRequester(
+            actions=[
+                httpx.ReadTimeout("timed out", request=timeout_request),
+                make_response(200, {"ok": True}),
+            ]
+        )
+        before_attempts: list[int] = []
+        after_statuses: list[int] = []
+        error_types: list[str] = []
+        sleep_calls: list[float] = []
+
+        def before_hook(context: Any) -> None:
+            before_attempts.append(context.attempt)
+
+        def after_hook(context: Any) -> None:
+            after_statuses.append(context.response.status_code)
+
+        def error_hook(context: Any) -> None:
+            error_types.append(type(context.error).__name__)
+
+        async def fake_sleep(delay: float) -> None:
+            sleep_calls.append(delay)
+
+        monkeypatch.setattr(http_module.asyncio, "sleep", fake_sleep)
+
+        client = AsyncHttpClient(
+            base_url="https://api.test",
+            client=requester,
+            default_headers={"X-Default": "1"},
+            retry=RetryPolicy(
+                max_attempts=2,
+                retry_methods=("GET",),
+                retry_on_network_error=True,
+                base_delay_seconds=0.5,
+            ),
+            hooks=Hooks(
+                before_request=[before_hook],
+                after_response=after_hook,
+                on_error=[error_hook],
+            ),
+        )
+        result = await client.request(
+            HttpRequestOptions(
+                path="/items",
+                method="GET",
+                headers={"X-Extra": "2"},
+                query={"page": 2},
+                retry=True,
+            )
+        )
+
+        assert result == {"ok": True}
+        assert before_attempts == [1, 2]
+        assert after_statuses == [200]
+        assert error_types == ["TimeoutError"]
+        assert sleep_calls == [0.5]
+        assert requester.calls[0]["headers"] == {"X-Default": "1", "X-Extra": "2"}
+
+        network_client = AsyncHttpClient(
+            base_url="https://api.test",
+            client=SequencedAsyncRequester(
+                actions=[
+                    httpx.ConnectError(
+                        "boom",
+                        request=httpx.Request("POST", "https://api.test/fail"),
+                    )
+                ]
+            ),
+        )
+        with pytest.raises(NetworkError, match="Request failed"):
+            await network_client.request(HttpRequestOptions(path="/fail", method="POST"))
+
+        timeout_failure_client = AsyncHttpClient(
+            base_url="https://api.test",
+            client=SequencedAsyncRequester(
+                actions=[
+                    httpx.ReadTimeout(
+                        "timed out",
+                        request=httpx.Request("GET", "https://api.test/timeout"),
+                    )
+                ]
+            ),
+            retry=RetryPolicy(max_attempts=1, retry_methods=("GET",), retry_on_network_error=True),
+        )
+        with pytest.raises(TimeoutError, match="Request timed out"):
+            await timeout_failure_client.request(HttpRequestOptions(path="/timeout", method="GET"))
+
+        network_retry_client = AsyncHttpClient(
+            base_url="https://api.test",
+            client=SequencedAsyncRequester(
+                actions=[
+                    httpx.ConnectError(
+                        "boom",
+                        request=httpx.Request("GET", "https://api.test/network-retry"),
+                    ),
+                    make_response(200, {"ok": "network-retried"}),
+                ]
+            ),
+            retry=RetryPolicy(max_attempts=2, retry_methods=("GET",), retry_on_network_error=True),
+        )
+        assert await network_retry_client.request(
+            HttpRequestOptions(path="/network-retry", method="GET")
+        ) == {"ok": "network-retried"}
+
+        api_retry_client = AsyncHttpClient(
+            base_url="https://api.test",
+            client=SequencedAsyncRequester(
+                actions=[
+                    make_response(503, {"detail": "temporary"}),
+                    make_response(200, {"ok": "retried"}),
+                ]
+            ),
+            retry=RetryPolicy(
+                max_attempts=2,
+                retry_methods=("GET",),
+                retry_on_statuses=(503,),
+            ),
+        )
+        assert await api_retry_client.request(HttpRequestOptions(path="/retry", method="GET")) == {
+            "ok": "retried"
+        }
+
+        api_failure_client = AsyncHttpClient(
+            base_url="https://api.test",
+            client=SequencedAsyncRequester(actions=[make_response(400, {"detail": "bad"})]),
+        )
+        with pytest.raises(ApiError, match="bad") as exc:
+            await api_failure_client.request(HttpRequestOptions(path="/bad", method="GET"))
+        assert exc.value.status_code == 400
+        assert exc.value.response_body == {"detail": "bad"}
+
+        owned_requester = SequencedAsyncRequester(actions=[])
+        monkeypatch.setattr(http_module.httpx, "AsyncClient", lambda: owned_requester)
+        async with AsyncHttpClient(base_url="https://api.test") as owned_client:
+            assert owned_client.client is owned_requester
+        assert owned_requester.closed is True
+
+        stubborn_client = AsyncHttpClient(
+            base_url="https://api.test",
+            client=SequencedAsyncRequester(actions=[make_response(503, {"detail": "still bad"})]),
+            retry=RetryPolicy(max_attempts=1, retry_methods=("GET",), retry_on_statuses=(503,)),
+        )
+
+        async def no_sleep(self: AsyncHttpClient, policy: RetryPolicy | None, attempt: int) -> None:
+            return None
+
+        monkeypatch.setattr(AsyncHttpClient, "_should_retry", lambda self, policy, context: True)
+        monkeypatch.setattr(AsyncHttpClient, "_sleep_before_retry", no_sleep)
+        with pytest.raises(RuntimeError, match="unreachable retry state"):
+            await stubborn_client.request(HttpRequestOptions(path="/never-stop", method="GET"))
+
+    asyncio.run(run())
+
+
+def test_sms_services_and_clients_cover_delegation_and_configuration_errors() -> None:
+    request_options = RequestOptions(headers={"X-Test": "1"})
+    send_request = SmsSendRequest(messages=[SmsMessage(recipient="254700000010", text="Hi")])
+    group_request = SmsGroupUpsertRequest(name="Customers")
+    template_request = SmsTemplateUpsertRequest(name="welcome", body="Hello")
+
+    gateway = DummySmsManagementGateway()
+    service = SmsService(gateway)
+    assert service.configured is True
+    assert service.provider == "dummy-sms"
+    assert service.send(send_request, options=request_options).submitted_count == 1
+    assert service.get_balance(options=request_options).provider == "dummy-sms"
+    assert service.list_groups(options=request_options)[0].name == "Customers"
+    assert service.create_group(group_request, options=request_options).message == "Customers"
+    assert service.update_group("10", group_request, options=request_options).resource_id == "10"
+    assert service.delete_group("10", options=request_options).resource_id == "10"
+    assert service.list_templates(options=request_options)[0].name == "welcome"
+    assert service.create_template(template_request, options=request_options).message == "welcome"
+    assert (
+        service.update_template("12", template_request, options=request_options).resource_id
+        == "12"
+    )
+    assert service.delete_template("12", options=request_options).resource_id == "12"
+    assert service.parse_delivery_report({"messageId": "sms-1"}).provider_message_id == "sms-1"
+    service.close()
+    assert gateway.closed is True
+
+    base_gateway = DummySmsGateway()
+    bare_service = SmsService(base_gateway)
+    assert bare_service.configured is True
+    assert bare_service.provider == "dummy-sms"
+    with pytest.raises(ConfigurationError, match="group/template management"):
+        bare_service.list_groups()
+
+    unconfigured = SmsService(None)
+    assert unconfigured.configured is False
+    assert unconfigured.provider is None
+    with pytest.raises(ConfigurationError, match="SMS gateway is not configured"):
+        unconfigured.send(send_request)
+
+    client_gateway = DummySmsManagementGateway()
+    wa_gateway = DummyWhatsAppGateway()
+    with MessagingClient(sms=client_gateway, whatsapp=wa_gateway) as client:
+        assert client.sms.provider == "dummy-sms"
+        assert client.whatsapp.provider == "dummy-wa"
+    assert client_gateway.closed is True
+    assert wa_gateway.closed is True
+
+
+def test_async_sms_services_and_clients_cover_delegation_and_configuration_errors() -> None:
+    async def run() -> None:
+        request_options = RequestOptions(timeout_seconds=2.0)
+        send_request = SmsSendRequest(
+            messages=[SmsMessage(recipient="254700000011", text="Hi async")]
+        )
+        group_request = SmsGroupUpsertRequest(name="Leads")
+        template_request = SmsTemplateUpsertRequest(name="promo", body="Save more")
+
+        gateway = DummyAsyncSmsManagementGateway()
+        service = AsyncSmsService(gateway)
+        assert service.configured is True
+        assert service.provider == "dummy-sms"
+        assert (await service.send(send_request, options=request_options)).submitted_count == 1
+        assert (await service.get_balance(options=request_options)).provider == "dummy-sms"
+        assert (await service.list_groups(options=request_options))[0].name == "Leads"
+        assert (await service.create_group(group_request, options=request_options)).message == (
+            "Leads"
+        )
+        assert (
+            await service.update_group("20", group_request, options=request_options)
+        ).resource_id == "20"
+        assert (await service.delete_group("20", options=request_options)).resource_id == "20"
+        assert (await service.list_templates(options=request_options))[0].name == "promo"
+        assert (
+            await service.create_template(template_request, options=request_options)
+        ).message == "promo"
+        assert (
+            await service.update_template("21", template_request, options=request_options)
+        ).resource_id == "21"
+        assert (await service.delete_template("21", options=request_options)).resource_id == "21"
+        assert service.parse_delivery_report({"messageId": "sms-async-1"}).provider_message_id == (
+            "sms-async-1"
+        )
+        await service.aclose()
+        assert gateway.closed is True
+
+        bare_service = AsyncSmsService(DummyAsyncSmsGateway())
+        with pytest.raises(ConfigurationError, match="group/template management"):
+            await bare_service.list_groups()
+
+        unconfigured = AsyncSmsService(None)
+        assert unconfigured.configured is False
+        assert unconfigured.provider is None
+        with pytest.raises(ConfigurationError, match="SMS gateway is not configured"):
+            await unconfigured.send(send_request)
+
+        sms_gateway = DummyAsyncSmsManagementGateway()
+        wa_gateway = DummyAsyncWhatsAppGateway()
+        async with AsyncMessagingClient(sms=sms_gateway, whatsapp=wa_gateway) as client:
+            assert client.sms.provider == "dummy-sms"
+            assert client.whatsapp.provider == "dummy-wa"
+        assert sms_gateway.closed is True
+        assert wa_gateway.closed is True
+
+    asyncio.run(run())
+
+
+def test_whatsapp_services_models_and_configuration_errors() -> None:
+    text_request = WhatsAppTextRequest(recipient="254700000012", text="hello")
+    template_request = WhatsAppTemplateRequest(
+        recipient="254700000012",
+        template_name="greeting",
+        language_code="en_US",
+    )
+    options = RequestOptions(headers={"X-Test": "1"})
+
+    gateway = DummyWhatsAppGateway()
+    service = WhatsAppService(gateway)
+    assert service.configured is True
+    assert service.provider == "dummy-wa"
+    assert service.send_text(text_request, options=options).submitted_count == 1
+    assert service.send_template(template_request, options=options).failed_count == 1
+    assert service.parse_events({"entry": []})[0].provider_message_id == "wa-evt-1"
+    assert service.parse_event({"entry": []}).provider_message_id == "wa-evt-1"
+    service.close()
+    assert gateway.closed is True
+
+    class EmptyWhatsAppGateway(DummyWhatsAppGateway):
+        def parse_events(self, payload: dict[str, object]) -> tuple[DeliveryEvent, ...]:
+            return ()
+
+    assert WhatsAppService(EmptyWhatsAppGateway()).parse_event({}) is None
+
+    unconfigured = WhatsAppService(None)
+    assert unconfigured.configured is False
+    assert unconfigured.provider is None
+    with pytest.raises(ConfigurationError, match="WhatsApp gateway is not configured"):
+        unconfigured.send_text(text_request)
+
+    result = WhatsAppSendResult(
+        provider="dummy-wa",
+        accepted=True,
+        error_code=None,
+        error_description=None,
+        messages=(
+            WhatsAppSendReceipt(
+                provider="dummy-wa",
+                recipient="254700000012",
+                status="submitted",
+                provider_message_id="wa-1",
+            ),
+            WhatsAppSendReceipt(
+                provider="dummy-wa",
+                recipient="254700000013",
+                status="failed",
+                provider_message_id="wa-2",
+            ),
+        ),
+    )
+    assert result.submitted_count == 1
+    assert result.failed_count == 1
+
+
+def test_async_whatsapp_services_cover_delegation_and_configuration_errors() -> None:
+    async def run() -> None:
+        text_request = WhatsAppTextRequest(recipient="254700000014", text="hello async")
+        template_request = WhatsAppTemplateRequest(
+            recipient="254700000014",
+            template_name="promo",
+            language_code="en_US",
+        )
+        options = RequestOptions(timeout_seconds=3.0)
+
+        gateway = DummyAsyncWhatsAppGateway()
+        service = AsyncWhatsAppService(gateway)
+        assert service.configured is True
+        assert service.provider == "dummy-wa"
+        assert (await service.send_text(text_request, options=options)).submitted_count == 1
+        assert (await service.send_template(template_request, options=options)).failed_count == 1
+        assert service.parse_events({})[0].provider_message_id == "wa-evt-async-1"
+        assert service.parse_event({}).provider_message_id == "wa-evt-async-1"
+        await service.aclose()
+        assert gateway.closed is True
+
+        class EmptyAsyncWhatsAppGateway(DummyAsyncWhatsAppGateway):
+            def parse_events(self, payload: dict[str, object]) -> tuple[DeliveryEvent, ...]:
+                return ()
+
+        assert AsyncWhatsAppService(EmptyAsyncWhatsAppGateway()).parse_event({}) is None
+
+        unconfigured = AsyncWhatsAppService(None)
+        assert unconfigured.configured is False
+        assert unconfigured.provider is None
+        with pytest.raises(ConfigurationError, match="WhatsApp gateway is not configured"):
+            await unconfigured.send_text(text_request)
+
+    asyncio.run(run())
+
+
+def test_onfon_gateway_sync_management_and_helper_paths() -> None:
+    client = SequencedSyncRequester(
+        actions=[
+            make_response(
+                200,
+                {
+                    "ErrorCode": 0,
+                    "ErrorDescription": "Success",
+                    "Data": [{"PluginType": "SMS", "Credits": "KSh12.50"}],
+                },
+            ),
+            make_response(
+                200,
+                {
+                    "ErrorCode": 0,
+                    "ErrorDescription": "Success",
+                    "Data": [
+                        {"GroupId": "1", "GroupName": "Customers", "ContactCount": "5"},
+                        {"GroupId": None, "GroupName": "Ignored", "ContactCount": "x"},
+                    ],
+                },
+            ),
+            make_response(
+                200,
+                {"ErrorCode": 0, "ErrorDescription": "success#Created", "Data": None},
+            ),
+            make_response(
+                200,
+                {"ErrorCode": 0, "ErrorDescription": "success#Updated", "Data": ""},
+            ),
+            make_response(
+                200,
+                {"ErrorCode": 0, "ErrorDescription": "success#Deleted", "Data": ""},
+            ),
+            make_response(
+                200,
+                {
+                    "ErrorCode": 0,
+                    "ErrorDescription": "Success",
+                    "Data": [
+                        {
+                            "TemplateId": "2",
+                            "TemplateName": "promo",
+                            "MessageTemplate": "Hello",
+                            "IsApproved": "yes",
+                            "IsActive": "0",
+                            "CreatededDate": "2026-04-07",
+                            "ApprovedDate": "2026-04-08",
+                        },
+                        {
+                            "TemplateId": None,
+                            "TemplateName": "Ignored",
+                            "MessageTemplate": "Ignored",
+                        },
+                    ],
+                },
+            ),
+            make_response(
+                200,
+                {"ErrorCode": 0, "ErrorDescription": "success#Created", "Data": "created"},
+            ),
+            make_response(
+                200,
+                {"ErrorCode": 0, "ErrorDescription": "success#Updated", "Data": ""},
+            ),
+            make_response(
+                200,
+                {"ErrorCode": 0, "ErrorDescription": "success#Deleted", "Data": ""},
+            ),
+        ]
+    )
+
+    gateway = OnfonSmsGateway(
+        access_key="access-key",
+        api_key="api-key",
+        client_id="client-id",
+        default_sender_id="NORIA",
+        client=client,
+    )
+
+    assert gateway.get_balance().entries[0].credits == Decimal("12.50")
+    groups = gateway.list_groups()
+    assert len(groups) == 1
+    assert groups[0].group_id == "1"
+    assert groups[0].name == "Customers"
+    assert groups[0].contact_count == 5
+    assert gateway.create_group(
+        SmsGroupUpsertRequest(name="Customers", provider_options={"Tag": "vip"})
+    ).message == "success#Created"
+    assert gateway.update_group("1", SmsGroupUpsertRequest(name="Leads")).resource_id == "1"
+    assert gateway.delete_group("1").resource_id == "1"
+    templates = gateway.list_templates()
+    assert templates[0].approved is True
+    assert templates[0].active is False
+    assert gateway.create_template(
+        SmsTemplateUpsertRequest(name="promo", body="Hello ##Name##")
+    ).message == "created"
+    assert gateway.update_template(
+        "2",
+        SmsTemplateUpsertRequest(name="promo-updated", body="Updated"),
+    ).resource_id == "2"
+    assert gateway.delete_template("2").resource_id == "2"
+    assert gateway.parse_delivery_report({}) is None
+    gateway.close()
+    assert client.closed is False
+
+    gateway._http = HttpClient(base_url="https://api.test", client=client)
+    gateway.close()
+    assert client.closed is False
+
+    with pytest.raises(GatewayError, match="non-object response"):
+        gateway._validate_response([])
+    with pytest.raises(GatewayError, match="Provider request failed"):
+        gateway._validate_response({"ErrorCode": 1, "ErrorDescription": None})
+    with pytest.raises(ValueError, match="messages must not be empty"):
+        _validate_send_request(SmsSendRequest(messages=[]))
+    with pytest.raises(ValueError, match="messages\\[0\\].recipient must not be empty"):
+        _validate_send_request(SmsSendRequest(messages=[SmsMessage(recipient=" ", text="Hi")]))
+    with pytest.raises(ValueError, match="messages\\[0\\].text must not be empty"):
+        _validate_send_request(SmsSendRequest(messages=[SmsMessage(recipient="2547", text=" ")]))
+    with pytest.raises(ConfigurationError, match="name is required"):
+        require_onfon_text(None, "name")
+    with pytest.raises(ValueError, match="group_id is required"):
+        require_onfon_identifier(None, "group_id")
+    assert _normalize_error_code(None) is None
+    assert _normalize_error_code("7") == "007"
+    assert _normalize_error_code("E01") == "E01"
+    assert _coerce_int(None) is None
+    assert _coerce_int("bad") is None
+    assert _coerce_int("9") == 9
+    assert _coerce_bool(True) is True
+    assert _coerce_bool(None) is None
+    assert _coerce_bool("1") is True
+    assert _coerce_bool("0") is False
+    assert _coerce_bool("maybe") is None
+    assert _is_success_payload({"ErrorCode": 0, "ErrorDescription": "Success"}) is True
+    assert _is_success_payload({"ErrorCode": 0, "ErrorDescription": None}) is True
+    assert _is_success_payload({"ErrorCode": "2", "ErrorDescription": "Failed"}) is False
+    assert _is_success_code(None) is False
+    assert _is_success_code("0") is True
+    assert _is_success_code("x") is False
+    assert _map_delivery_state(None) == "unknown"
+    assert _map_delivery_state("DELIVERED") == "delivered"
+    assert _map_delivery_state("accepted") == "submitted"
+    assert _map_delivery_state("FAILED") == "failed"
+    assert _map_delivery_state("OTHER") == "unknown"
+    assert gateway._build_template_list({"Data": None}) == ()
+
+
+def test_onfon_gateway_async_management_and_close_paths() -> None:
+    async def run() -> None:
+        async_client = SequencedAsyncRequester(
+            actions=[
+                make_response(
+                    200,
+                    {
+                        "ErrorCode": 0,
+                        "ErrorDescription": "Success",
+                        "Data": [{"PluginType": "SMS", "Credits": "KSh20.00"}],
+                    },
+                ),
+                make_response(
+                    200,
+                    {
+                        "ErrorCode": 0,
+                        "ErrorDescription": "Success",
+                        "Data": [{"GroupId": "3", "GroupName": "Async", "ContactCount": 2}],
+                    },
+                ),
+                make_response(
+                    200,
+                    {"ErrorCode": 0, "ErrorDescription": "success#Created", "Data": "ok"},
+                ),
+                make_response(
+                    200,
+                    {"ErrorCode": 0, "ErrorDescription": "success#Updated", "Data": ""},
+                ),
+                make_response(
+                    200,
+                    {"ErrorCode": 0, "ErrorDescription": "success#Deleted", "Data": ""},
+                ),
+                make_response(
+                    200,
+                    {
+                        "ErrorCode": 0,
+                        "ErrorDescription": "Success",
+                        "Data": [
+                            {
+                                "TemplateId": "4",
+                                "TemplateName": "async",
+                                "MessageTemplate": "Body",
+                                "IsApproved": True,
+                                "IsActive": False,
+                            }
+                        ],
+                    },
+                ),
+                make_response(
+                    200,
+                    {"ErrorCode": 0, "ErrorDescription": "success#Created", "Data": "ok"},
+                ),
+                make_response(
+                    200,
+                    {"ErrorCode": 0, "ErrorDescription": "success#Updated", "Data": ""},
+                ),
+                make_response(
+                    200,
+                    {"ErrorCode": 0, "ErrorDescription": "success#Deleted", "Data": ""},
+                ),
+            ]
+        )
+        gateway = OnfonSmsGateway(
+            access_key="access-key",
+            api_key="api-key",
+            client_id="client-id",
+            default_sender_id="NORIA",
+            async_client=async_client,
+        )
+
+        assert (await gateway.aget_balance()).entries[0].credits == Decimal("20.00")
+        assert (await gateway.alist_groups())[0].name == "Async"
+        assert (await gateway.acreate_group(SmsGroupUpsertRequest(name="Async"))).message == "ok"
+        assert (
+            await gateway.aupdate_group("3", SmsGroupUpsertRequest(name="Async-updated"))
+        ).resource_id == "3"
+        assert (await gateway.adelete_group("3")).resource_id == "3"
+        assert (await gateway.alist_templates())[0].template_id == "4"
+        assert (
+            await gateway.acreate_template(SmsTemplateUpsertRequest(name="a", body="b"))
+        ).message == "ok"
+        assert (
+            await gateway.aupdate_template("4", SmsTemplateUpsertRequest(name="a", body="b"))
+        ).resource_id == "4"
+        assert (await gateway.adelete_template("4")).resource_id == "4"
+
+        await gateway.aclose()
+        assert async_client.closed is False
+        gateway._async_http = AsyncHttpClient(base_url="https://api.test", client=async_client)
+        await gateway.aclose()
+        assert async_client.closed is False
+
+    asyncio.run(run())
+
+
+def test_meta_gateway_sync_async_helpers_and_parser_paths() -> None:
+    async def run() -> None:
+        sync_client = SequencedSyncRequester(
+            actions=[
+                make_response(
+                    200,
+                    {
+                        "contacts": [{"wa_id": "254700000020"}],
+                        "messages": [{"id": "wamid.1", "message_status": "accepted"}],
+                    },
+                ),
+                make_response(
+                    200,
+                    {
+                        "contacts": [{"wa_id": "254700000020"}],
+                        "messages": [{"id": "wamid.2", "message_status": "sent"}],
+                    },
+                ),
+            ]
+        )
+        async_client = SequencedAsyncRequester(
+            actions=[
+                make_response(
+                    200,
+                    {
+                        "contacts": [{"wa_id": "254700000021"}],
+                        "messages": [{"id": "wamid.3", "message_status": "accepted"}],
+                    },
+                ),
+                make_response(
+                    200,
+                    {
+                        "contacts": [{"wa_id": "254700000021"}],
+                        "messages": [{"id": "wamid.4", "message_status": "sent"}],
+                    },
+                ),
+            ]
+        )
+        gateway = MetaWhatsAppGateway(
+            access_token="token",
+            phone_number_id="12345",
+            app_secret="app-secret",
+            client=sync_client,
+            async_client=async_client,
+        )
+
+        assert gateway.send_text(
+            WhatsAppTextRequest(recipient="254700000020", text="Hello sync")
+        ).messages[0].provider_message_id == "wamid.1"
+        assert gateway.send_template(
+            WhatsAppTemplateRequest(
+                recipient="254700000020",
+                template_name="promo",
+                language_code="en_US",
+                reply_to_message_id="wamid.parent",
+                components=[
+                    WhatsAppTemplateComponent(
+                        type="button",
+                        sub_type="quick_reply",
+                        index=0,
+                        parameters=[
+                            WhatsAppTemplateParameter(type="payload", value="payload-1"),
+                        ],
+                    )
+                ],
+            )
+        ).messages[0].provider_message_id == "wamid.2"
+        assert (
+            await gateway.asend_text(
+                WhatsAppTextRequest(recipient="254700000021", text="Hello async")
+            )
+        ).messages[0].provider_message_id == "wamid.3"
+        assert (
+            await gateway.asend_template(
+                WhatsAppTemplateRequest(
+                    recipient="254700000021",
+                    template_name="promo",
+                    language_code="en_US",
+                )
+            )
+        ).messages[0].provider_message_id == "wamid.4"
+        assert gateway._messages_path() == f"/{gateway.api_version}/12345/messages"
+
+        events = gateway.parse_events(
+            {
+                "entry": [
+                    {"changes": "invalid"},
+                    {
+                        "changes": [
+                            {"value": {"statuses": "invalid"}},
+                            {
+                                "value": {
+                                    "statuses": [
+                                        {"status": "delivered"},
+                                        {
+                                            "id": "wamid.status.1",
+                                            "status": "failed",
+                                            "recipient_id": "254700000099",
+                                            "timestamp": "1712475856",
+                                            "errors": [{"code": "470", "title": "No route"}],
+                                            "conversation": {"origin": {}},
+                                            "pricing": {"category": "utility"},
+                                        },
+                                    ]
+                                }
+                            },
+                        ]
+                    },
+                ]
+            }
+        )
+        assert len(events) == 1
+        assert events[0].state == "failed"
+        assert events[0].error_code == "470"
+        assert events[0].error_description == "No route"
+        assert gateway.parse_events({"entry": "invalid"}) == ()
+        assert gateway.parse_event({"entry": []}) is None
+        assert gateway.parse_event(
+            {
+                "entry": [
+                    {
+                        "changes": [
+                            {
+                                "value": {
+                                    "statuses": [
+                                        {
+                                            "id": "wamid.status.2",
+                                            "status": "read",
+                                        }
+                                    ]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        ).state == "read"
+
+        with pytest.raises(GatewayError, match="did not return a message id"):
+            gateway._build_send_result("254700000020", {"messages": [{}]})
+        with pytest.raises(GatewayError, match="non-object response"):
+            gateway._validate_response([])
+        with pytest.raises(GatewayError, match="Provider request failed"):
+            gateway._validate_response({"error": {"code": "190"}})
+        with pytest.raises(GatewayError, match="user-visible"):
+            gateway._validate_response(
+                {
+                    "error": {
+                        "code": "190",
+                        "error_user_msg": "user-visible",
+                        "message": "fallback",
+                    }
+                }
+            )
+
+        assert _build_text_payload(
+            WhatsAppTextRequest(
+                recipient="254700000022",
+                text="Hello",
+                preview_url=True,
+                reply_to_message_id="wamid.reply",
+                provider_options={"biz_opaque_callback_data": "cb-1"},
+            )
+        ) == {
+            "biz_opaque_callback_data": "cb-1",
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": "254700000022",
+            "type": "text",
+            "text": {"body": "Hello", "preview_url": True},
+            "context": {"message_id": "wamid.reply"},
+        }
+        assert _build_template_payload(
+            WhatsAppTemplateRequest(
+                recipient="254700000023",
+                template_name="promo",
+                language_code="en_US",
+                reply_to_message_id="wamid.parent",
+                provider_options={"biz_opaque_callback_data": "cb-2"},
+                components=[
+                    WhatsAppTemplateComponent(
+                        type="button",
+                        sub_type="quick_reply",
+                        index=1,
+                        parameters=(
+                            WhatsAppTemplateParameter(type="text", value="Alice"),
+                            WhatsAppTemplateParameter(type="payload", value="p-1"),
+                            WhatsAppTemplateParameter(type="image", value="media-1"),
+                            WhatsAppTemplateParameter(
+                                type="image",
+                                value="ignored",
+                                provider_options={"image": {"link": "https://cdn.test/image.png"}},
+                            ),
+                            WhatsAppTemplateParameter(type="currency", value="KES 100"),
+                            WhatsAppTemplateParameter(type="text"),
+                        ),
+                    )
+                ],
+            )
+        )["template"]["components"][0]["parameters"] == [
+            {"type": "text", "text": "Alice"},
+            {"type": "payload", "payload": "p-1"},
+            {"type": "image", "image": {"id": "media-1"}},
+            {"image": {"link": "https://cdn.test/image.png"}, "type": "image"},
+            {"type": "currency", "text": "KES 100"},
+            {"type": "text"},
+        ]
+        assert _build_template_component(WhatsAppTemplateComponent(type="body")) == {"type": "body"}
+        assert _build_template_parameter(WhatsAppTemplateParameter(type="payload", value="x")) == {
+            "type": "payload",
+            "payload": "x",
+        }
+        assert _first_mapping([]) == {}
+        assert _first_mapping({"id": "1"}) == {"id": "1"}
+        assert _map_whatsapp_state("accepted") == "submitted"
+        assert _map_whatsapp_state("sent") == "submitted"
+        assert _map_whatsapp_state("delivered") == "delivered"
+        assert _map_whatsapp_state("read") == "read"
+        assert _map_whatsapp_state("failed") == "failed"
+        assert _map_whatsapp_state(None) == "unknown"
+        with pytest.raises(ConfigurationError, match="recipient is required"):
+            require_meta_text(" ", "recipient")
+
+        gateway.close()
+        await gateway.aclose()
+        assert sync_client.closed is False
+        assert async_client.closed is False
+        gateway._http = HttpClient(base_url="https://api.test", client=sync_client)
+        gateway._async_http = AsyncHttpClient(base_url="https://api.test", client=async_client)
+        gateway.close()
+        await gateway.aclose()
+        assert sync_client.closed is False
+        assert async_client.closed is False
+
+    asyncio.run(run())
+
+
+def test_webhook_helpers_cover_fastapi_flask_and_onfon_paths() -> None:
+    sms_gateway = OnfonSmsGateway(access_key="a", api_key="b", client_id="c")
+    whatsapp_gateway = MetaWhatsAppGateway(
+        access_token="meta-token",
+        phone_number_id="123456789",
+        app_secret="app-secret",
+    )
+
+    assert fastapi_resolve_meta_subscription_challenge(
+        FakeFastAPIRequest(
+            query_params={
+                "hub.mode": "subscribe",
+                "hub.verify_token": "verify-me",
+                "hub.challenge": "1234",
+            }
+        ),
+        "verify-me",
+    ) == "1234"
+    assert flask_resolve_meta_subscription_challenge(
+        FakeFlaskRequest(
+            args={
+                "hub.mode": "subscribe",
+                "hub.verify_token": "verify-me",
+                "hub.challenge": "5678",
+            }
+        ),
+        "verify-me",
+    ) == "5678"
+
+    assert asyncio.run(
+        fastapi_parse_onfon_delivery_report(
+            FakeFastAPIRequest(query_params={"messageId": "sms-fastapi-1"}),
+            sms_gateway,
+        )
+    ).provider_message_id == "sms-fastapi-1"
+    assert flask_parse_onfon_delivery_report(
+        FakeFlaskRequest(args={"messageId": "sms-flask-1"}),
+        sms_gateway,
+    ).provider_message_id == "sms-flask-1"
+    assert (
+        parse_onfon_delivery_report(
+            {"messageId": "sms-helper-1"},
+            sms_gateway,
+        ).provider_message_id
+        == "sms-helper-1"
+    )
+
+    payload = b"[]"
+    signature = hmac.new(b"app-secret", payload, hashlib.sha256).hexdigest()
+    assert (
+        asyncio.run(
+            fastapi_parse_meta_delivery_events(
+                FakeFastAPIRequest(
+                    headers={"x-hub-signature-256": f"sha256={signature}"},
+                    payload=payload,
+                ),
+                whatsapp_gateway,
+                require_signature=True,
+            )
+        )
+        == ()
+    )
+    assert flask_parse_meta_delivery_events(
+        FakeFlaskRequest(
+            json_payload={
+                "entry": [
+                    {
+                        "changes": [
+                            {
+                                "value": {
+                                    "statuses": [
+                                        {
+                                            "id": "wamid.webhook.1",
+                                            "status": "delivered",
+                                        }
+                                    ]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            },
+        ),
+        whatsapp_gateway,
+    )[0].provider_message_id == "wamid.webhook.1"
+    assert (
+        flask_parse_meta_delivery_events(
+            FakeFlaskRequest(
+                headers={"X-Hub-Signature-256": f"sha256={signature}"},
+                payload=payload,
+                json_payload=["not-a-dict"],
+            ),
+            whatsapp_gateway,
+            require_signature=True,
+        )
+        == ()
+    )
+
+
+def test_parse_decimal_handles_invalid_operation(monkeypatch: pytest.MonkeyPatch) -> None:
+    def broken_decimal(value: str) -> Decimal:
+        raise InvalidOperation
+
+    monkeypatch.setattr("noria_messaging.utils.Decimal", broken_decimal)
+    assert parse_decimal_from_text("123.45") is None
