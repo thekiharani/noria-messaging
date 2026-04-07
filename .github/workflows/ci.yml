@@ -71,23 +71,29 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          VERSION="${LATEST_TAG#v}"
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
-          COMMITS=$(git log "${LATEST_TAG}..HEAD" --pretty=format:"%s" 2>/dev/null || git log --pretty=format:"%s")
+          BASE_VERSION=$(python - <<'PY'
+          from pathlib import Path
+          import re
 
-          if echo "$COMMITS" | grep -qiE "^breaking[:(]|BREAKING CHANGE"; then
-            MAJOR=$((MAJOR + 1))
-            MINOR=0
-            PATCH=0
-          elif echo "$COMMITS" | grep -qiE "^feat[:(]"; then
-            MINOR=$((MINOR + 1))
-            PATCH=0
+          content = Path("pyproject.toml").read_text()
+          match = re.search(r'(?m)^version = "(.*)"$', content)
+          if match is None:
+              raise SystemExit("Unable to find version in pyproject.toml")
+          print(match.group(1))
+          PY
+          )
+
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE_VERSION"
+          LINE_TAG_PREFIX="v${MAJOR}.${MINOR}."
+          LATEST_LINE_TAG=$(git tag -l "${LINE_TAG_PREFIX}*" --sort=-v:refname | head -n 1)
+
+          if [ -z "$LATEST_LINE_TAG" ]; then
+            NEW_VERSION="${BASE_VERSION}"
           else
-            PATCH=$((PATCH + 1))
+            LATEST_PATCH="${LATEST_LINE_TAG##*.}"
+            NEW_VERSION="${MAJOR}.${MINOR}.$((LATEST_PATCH + 1))"
           fi
 
-          NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
           NEW_TAG="v${NEW_VERSION}"
 
           echo "version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
