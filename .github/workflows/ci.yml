@@ -120,7 +120,7 @@ jobs:
               path.write_text(updated)
           PY
 
-      - name: Commit version bump and push tag
+      - name: Commit version bump and push release tag
         env:
           TAG_NAME: ${{ steps.bump.outputs.tag_name }}
         shell: bash
@@ -131,7 +131,7 @@ jobs:
           git add pyproject.toml
           git commit -m "chore(release): ${TAG_NAME}" || true
           git tag "${TAG_NAME}"
-          git push origin HEAD:release "${TAG_NAME}"
+          git push origin "${TAG_NAME}"
 
   release:
     needs: tag
