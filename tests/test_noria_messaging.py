@@ -25,11 +25,25 @@ from noria_messaging import (
     SmsMessage,
     SmsSendRequest,
     SmsTemplateUpsertRequest,
+    WhatsAppContact,
+    WhatsAppContactAddress,
+    WhatsAppContactName,
+    WhatsAppContactPhone,
+    WhatsAppContactsRequest,
+    WhatsAppInteractiveHeader,
+    WhatsAppInteractiveRequest,
+    WhatsAppInteractiveRow,
+    WhatsAppInteractiveSection,
+    WhatsAppLocationRequest,
+    WhatsAppMediaRequest,
+    WhatsAppReactionRequest,
     WhatsAppTemplateComponent,
     WhatsAppTemplateParameter,
     WhatsAppTemplateRequest,
     WhatsAppTextRequest,
     fastapi_parse_meta_delivery_events,
+    fastapi_parse_meta_inbound_messages,
+    flask_parse_meta_inbound_messages,
     flask_parse_onfon_delivery_report,
     resolve_meta_subscription_challenge,
     verify_meta_signature,
@@ -551,6 +565,194 @@ def test_meta_whatsapp_gateway_sends_templates() -> None:
     assert template["components"][0]["parameters"][0]["text"] == "Alice"
 
 
+def test_meta_whatsapp_gateway_sends_media_location_contacts_reaction_and_interactive() -> None:
+    client = FakeSyncHttpClient(
+        responses=[
+            make_response(
+                200,
+                {
+                    "contacts": [{"wa_id": "254712345678"}],
+                    "messages": [{"id": "wamid.media", "message_status": "accepted"}],
+                },
+            ),
+            make_response(
+                200,
+                {
+                    "contacts": [{"wa_id": "254712345678"}],
+                    "messages": [{"id": "wamid.location", "message_status": "accepted"}],
+                },
+            ),
+            make_response(
+                200,
+                {
+                    "contacts": [{"wa_id": "254712345678"}],
+                    "messages": [{"id": "wamid.contacts", "message_status": "accepted"}],
+                },
+            ),
+            make_response(
+                200,
+                {
+                    "contacts": [{"wa_id": "254712345678"}],
+                    "messages": [{"id": "wamid.reaction", "message_status": "accepted"}],
+                },
+            ),
+            make_response(
+                200,
+                {
+                    "contacts": [{"wa_id": "254712345678"}],
+                    "messages": [{"id": "wamid.interactive", "message_status": "accepted"}],
+                },
+            ),
+        ]
+    )
+
+    gateway = MetaWhatsAppGateway(
+        access_token="meta-token",
+        phone_number_id="123456789",
+        client=client,
+    )
+
+    media = gateway.send_media(
+        WhatsAppMediaRequest(
+            recipient="254712345678",
+            media_type="image",
+            link="https://cdn.example.com/poster.png",
+            caption="Promo poster",
+            reply_to_message_id="wamid.original",
+        )
+    )
+    location = gateway.send_location(
+        WhatsAppLocationRequest(
+            recipient="254712345678",
+            latitude=-1.2921,
+            longitude=36.8219,
+            name="Noria HQ",
+            address="Westlands, Nairobi",
+        )
+    )
+    contacts = gateway.send_contacts(
+        WhatsAppContactsRequest(
+            recipient="254712345678",
+            contacts=[
+                WhatsAppContact(
+                    name=WhatsAppContactName(
+                        formatted_name="Alice Doe",
+                        first_name="Alice",
+                        last_name="Doe",
+                    ),
+                    phones=[
+                        WhatsAppContactPhone(
+                            phone="+254712345678",
+                            type="CELL",
+                            wa_id="254712345678",
+                        )
+                    ],
+                    addresses=[
+                        WhatsAppContactAddress(
+                            city="Nairobi",
+                            country="Kenya",
+                            type="HOME",
+                        )
+                    ],
+                )
+            ],
+        )
+    )
+    reaction = gateway.send_reaction(
+        WhatsAppReactionRequest(
+            recipient="254712345678",
+            message_id="wamid.original",
+            emoji="👍",
+        )
+    )
+    interactive = gateway.send_interactive(
+        WhatsAppInteractiveRequest(
+            recipient="254712345678",
+            interactive_type="list",
+            body_text="Choose a product",
+            header=WhatsAppInteractiveHeader(type="text", text="Catalog"),
+            footer_text="Powered by Noria",
+            button_text="View options",
+            sections=[
+                WhatsAppInteractiveSection(
+                    title="Plans",
+                    rows=[
+                        WhatsAppInteractiveRow(
+                            identifier="starter",
+                            title="Starter",
+                            description="Best for small teams",
+                        )
+                    ],
+                )
+            ],
+        )
+    )
+
+    assert media.messages[0].provider_message_id == "wamid.media"
+    assert location.messages[0].provider_message_id == "wamid.location"
+    assert contacts.messages[0].provider_message_id == "wamid.contacts"
+    assert reaction.messages[0].provider_message_id == "wamid.reaction"
+    assert interactive.messages[0].provider_message_id == "wamid.interactive"
+
+    assert client.calls[0]["json"]["image"]["link"] == "https://cdn.example.com/poster.png"
+    assert client.calls[0]["json"]["image"]["caption"] == "Promo poster"
+    assert client.calls[0]["json"]["context"] == {"message_id": "wamid.original"}
+    assert client.calls[1]["json"]["location"]["latitude"] == -1.2921
+    assert client.calls[1]["json"]["location"]["name"] == "Noria HQ"
+    assert client.calls[2]["json"]["contacts"][0]["name"]["formatted_name"] == "Alice Doe"
+    assert client.calls[2]["json"]["contacts"][0]["phones"][0]["wa_id"] == "254712345678"
+    assert client.calls[3]["json"]["reaction"] == {
+        "message_id": "wamid.original",
+        "emoji": "👍",
+    }
+    assert client.calls[4]["json"]["interactive"]["type"] == "list"
+    assert client.calls[4]["json"]["interactive"]["action"]["button"] == "View options"
+    assert (
+        client.calls[4]["json"]["interactive"]["action"]["sections"][0]["rows"][0]["id"]
+        == "starter"
+    )
+
+
+def test_async_messaging_client_sends_whatsapp_media_messages() -> None:
+    async_client = FakeAsyncHttpClient(
+        responses=[
+            make_response(
+                200,
+                {
+                    "contacts": [{"wa_id": "254712345678"}],
+                    "messages": [{"id": "wamid.async.media", "message_status": "accepted"}],
+                },
+            )
+        ]
+    )
+    gateway = MetaWhatsAppGateway(
+        access_token="meta-token",
+        phone_number_id="123456789",
+        async_client=async_client,
+    )
+
+    async def run() -> None:
+        async with AsyncMessagingClient(whatsapp=gateway) as messaging:
+            result = await messaging.whatsapp.send_media(
+                WhatsAppMediaRequest(
+                    recipient="254712345678",
+                    media_type="document",
+                    media_id="media-123",
+                    filename="brochure.pdf",
+                )
+            )
+
+            assert result.messages[0].provider_message_id == "wamid.async.media"
+            assert async_client.calls[0]["json"]["document"] == {
+                "id": "media-123",
+                "filename": "brochure.pdf",
+            }
+
+        assert async_client.closed is False
+
+    asyncio.run(run())
+
+
 def test_meta_whatsapp_gateway_parses_status_events() -> None:
     gateway = MetaWhatsAppGateway(
         access_token="meta-token",
@@ -595,6 +797,153 @@ def test_meta_whatsapp_gateway_parses_status_events() -> None:
     assert events[0].provider_message_id == "wamid.123"
     assert events[0].state == "delivered"
     assert events[0].metadata["conversation_id"] == "conversation-1"
+
+
+def test_meta_whatsapp_gateway_parses_inbound_messages() -> None:
+    gateway = MetaWhatsAppGateway(
+        access_token="meta-token",
+        phone_number_id="123456789",
+    )
+
+    messages = gateway.parse_inbound_messages(
+        {
+            "entry": [
+                {
+                    "changes": [
+                        {
+                            "value": {
+                                "metadata": {
+                                    "display_phone_number": "254700000000",
+                                    "phone_number_id": "123456789",
+                                },
+                                "contacts": [
+                                    {
+                                        "wa_id": "254712345678",
+                                        "profile": {"name": "Alice"},
+                                    }
+                                ],
+                                "messages": [
+                                    {
+                                        "from": "254712345678",
+                                        "id": "wamid.text",
+                                        "timestamp": "1712475856",
+                                        "type": "text",
+                                        "text": {"body": "Hello from Alice"},
+                                    },
+                                    {
+                                        "from": "254712345678",
+                                        "id": "wamid.image",
+                                        "timestamp": "1712475857",
+                                        "type": "image",
+                                        "image": {
+                                            "id": "media-1",
+                                            "mime_type": "image/png",
+                                            "caption": "Poster",
+                                        },
+                                        "context": {
+                                            "message_id": "wamid.parent",
+                                            "forwarded": True,
+                                        },
+                                    },
+                                    {
+                                        "from": "254712345678",
+                                        "id": "wamid.location",
+                                        "timestamp": "1712475858",
+                                        "type": "location",
+                                        "location": {
+                                            "latitude": "-1.2921",
+                                            "longitude": "36.8219",
+                                            "name": "Nairobi",
+                                        },
+                                    },
+                                    {
+                                        "from": "254712345678",
+                                        "id": "wamid.contacts",
+                                        "timestamp": "1712475859",
+                                        "type": "contacts",
+                                        "contacts": [
+                                            {
+                                                "name": {
+                                                    "formatted_name": "Bob Doe",
+                                                    "first_name": "Bob",
+                                                },
+                                                "phones": [{"phone": "+254700111222"}],
+                                            }
+                                        ],
+                                    },
+                                    {
+                                        "from": "254712345678",
+                                        "id": "wamid.button",
+                                        "timestamp": "1712475860",
+                                        "type": "button",
+                                        "button": {
+                                            "text": "Confirm",
+                                            "payload": "confirm-order",
+                                        },
+                                    },
+                                    {
+                                        "from": "254712345678",
+                                        "id": "wamid.interactive",
+                                        "timestamp": "1712475861",
+                                        "type": "interactive",
+                                        "interactive": {
+                                            "type": "list_reply",
+                                            "list_reply": {
+                                                "id": "starter",
+                                                "title": "Starter",
+                                                "description": "Best for small teams",
+                                            },
+                                        },
+                                    },
+                                    {
+                                        "from": "254712345678",
+                                        "id": "wamid.reaction",
+                                        "timestamp": "1712475862",
+                                        "type": "reaction",
+                                        "reaction": {
+                                            "message_id": "wamid.parent",
+                                            "emoji": "👍",
+                                        },
+                                    },
+                                    {
+                                        "from": "254712345678",
+                                        "id": "wamid.unsupported",
+                                        "timestamp": "1712475863",
+                                        "type": "order",
+                                    },
+                                ],
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+    )
+
+    assert len(messages) == 8
+    assert messages[0].message_type == "text"
+    assert messages[0].text == "Hello from Alice"
+    assert messages[0].profile_name == "Alice"
+    assert messages[0].metadata["phone_number_id"] == "123456789"
+    assert messages[1].message_type == "image"
+    assert messages[1].media is not None
+    assert messages[1].media.media_id == "media-1"
+    assert messages[1].context_message_id == "wamid.parent"
+    assert messages[1].forwarded is True
+    assert messages[2].location is not None
+    assert messages[2].location.latitude == -1.2921
+    assert messages[3].contacts[0].name.formatted_name == "Bob Doe"
+    assert messages[4].reply is not None
+    assert messages[4].reply.reply_type == "button"
+    assert messages[4].reply.payload == "confirm-order"
+    assert messages[5].reply is not None
+    assert messages[5].reply.reply_type == "list_reply"
+    assert messages[5].reply.identifier == "starter"
+    assert messages[6].reaction is not None
+    assert messages[6].reaction.related_message_id == "wamid.parent"
+    assert messages[7].message_type == "unsupported"
+    assert messages[7].metadata["provider_message_type"] == "order"
+    assert gateway.parse_inbound_message({"entry": []}) is None
 
 
 def test_meta_signature_helpers_validate_payloads() -> None:
@@ -660,6 +1009,69 @@ def test_fastapi_meta_webhook_helper_verifies_signature_and_parses_events() -> N
         assert events[0].state == "read"
 
     asyncio.run(run())
+
+
+def test_meta_webhook_helpers_parse_inbound_messages() -> None:
+    gateway = MetaWhatsAppGateway(
+        access_token="meta-token",
+        phone_number_id="123456789",
+        app_secret="app-secret",
+    )
+    payload = {
+        "entry": [
+            {
+                "changes": [
+                    {
+                        "value": {
+                            "contacts": [
+                                {
+                                    "wa_id": "254712345678",
+                                    "profile": {"name": "Alice"},
+                                }
+                            ],
+                            "messages": [
+                                {
+                                    "from": "254712345678",
+                                    "id": "wamid.inbound.1",
+                                    "timestamp": "1712475856",
+                                    "type": "text",
+                                    "text": {"body": "Inbound hello"},
+                                }
+                            ],
+                        }
+                    }
+                ]
+            }
+        ]
+    }
+    payload_bytes = json.dumps(payload).encode("utf-8")
+    digest = hmac.new(b"app-secret", payload_bytes, hashlib.sha256).hexdigest()
+
+    async def run() -> None:
+        fastapi_messages = await fastapi_parse_meta_inbound_messages(
+            FakeFastAPIRequest(
+                headers={"x-hub-signature-256": f"sha256={digest}"},
+                payload=payload_bytes,
+            ),
+            gateway,
+            require_signature=True,
+        )
+        assert len(fastapi_messages) == 1
+        assert fastapi_messages[0].text == "Inbound hello"
+
+    asyncio.run(run())
+
+    flask_messages = flask_parse_meta_inbound_messages(
+        FakeFlaskRequest(
+            headers={"X-Hub-Signature-256": f"sha256={digest}"},
+            payload=payload_bytes,
+            json_payload=payload,
+        ),
+        gateway,
+        require_signature=True,
+    )
+    assert len(flask_messages) == 1
+    assert flask_messages[0].message_id == "wamid.inbound.1"
 
 
 def test_flask_onfon_webhook_helper_parses_delivery_reports() -> None:

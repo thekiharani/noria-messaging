@@ -10,6 +10,7 @@ from typing import Any
 import httpx
 import pytest
 
+import noria_messaging.channels.whatsapp.gateways.meta as meta_gateway_module
 import noria_messaging.http as http_module
 from noria_messaging.channels.sms.gateways.onfon import (
     OnfonSmsGateway,
@@ -53,6 +54,22 @@ from noria_messaging.channels.whatsapp.gateways.meta import (
     _require_text as require_meta_text,
 )
 from noria_messaging.channels.whatsapp.models import (
+    WhatsAppContact,
+    WhatsAppContactAddress,
+    WhatsAppContactEmail,
+    WhatsAppContactName,
+    WhatsAppContactOrg,
+    WhatsAppContactPhone,
+    WhatsAppContactsRequest,
+    WhatsAppContactUrl,
+    WhatsAppInboundMessage,
+    WhatsAppInteractiveButton,
+    WhatsAppInteractiveHeader,
+    WhatsAppInteractiveRequest,
+    WhatsAppInteractiveSection,
+    WhatsAppLocationRequest,
+    WhatsAppMediaRequest,
+    WhatsAppReactionRequest,
     WhatsAppSendReceipt,
     WhatsAppSendResult,
     WhatsAppTemplateComponent,
@@ -100,11 +117,13 @@ from noria_messaging.utils import (
 )
 from noria_messaging.webhooks.fastapi import (
     fastapi_parse_meta_delivery_events,
+    fastapi_parse_meta_inbound_messages,
     fastapi_parse_onfon_delivery_report,
     fastapi_resolve_meta_subscription_challenge,
 )
 from noria_messaging.webhooks.flask import (
     flask_parse_meta_delivery_events,
+    flask_parse_meta_inbound_messages,
     flask_parse_onfon_delivery_report,
     flask_resolve_meta_subscription_challenge,
 )
@@ -512,6 +531,116 @@ class DummyWhatsAppGateway:
             ),
         )
 
+    def send_media(
+        self,
+        request: WhatsAppMediaRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult:
+        self.calls.append(("send_media", options))
+        return WhatsAppSendResult(
+            provider=self.provider_name,
+            accepted=True,
+            error_code=None,
+            error_description=None,
+            messages=(
+                WhatsAppSendReceipt(
+                    provider=self.provider_name,
+                    recipient=request.recipient,
+                    status="submitted",
+                    provider_message_id="wa-3",
+                ),
+            ),
+        )
+
+    def send_location(
+        self,
+        request: WhatsAppLocationRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult:
+        self.calls.append(("send_location", options))
+        return WhatsAppSendResult(
+            provider=self.provider_name,
+            accepted=True,
+            error_code=None,
+            error_description=None,
+            messages=(
+                WhatsAppSendReceipt(
+                    provider=self.provider_name,
+                    recipient=request.recipient,
+                    status="submitted",
+                    provider_message_id="wa-4",
+                ),
+            ),
+        )
+
+    def send_contacts(
+        self,
+        request: WhatsAppContactsRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult:
+        self.calls.append(("send_contacts", options))
+        return WhatsAppSendResult(
+            provider=self.provider_name,
+            accepted=True,
+            error_code=None,
+            error_description=None,
+            messages=(
+                WhatsAppSendReceipt(
+                    provider=self.provider_name,
+                    recipient=request.recipient,
+                    status="submitted",
+                    provider_message_id="wa-5",
+                ),
+            ),
+        )
+
+    def send_reaction(
+        self,
+        request: WhatsAppReactionRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult:
+        self.calls.append(("send_reaction", options))
+        return WhatsAppSendResult(
+            provider=self.provider_name,
+            accepted=True,
+            error_code=None,
+            error_description=None,
+            messages=(
+                WhatsAppSendReceipt(
+                    provider=self.provider_name,
+                    recipient=request.recipient,
+                    status="submitted",
+                    provider_message_id="wa-6",
+                ),
+            ),
+        )
+
+    def send_interactive(
+        self,
+        request: WhatsAppInteractiveRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult:
+        self.calls.append(("send_interactive", options))
+        return WhatsAppSendResult(
+            provider=self.provider_name,
+            accepted=True,
+            error_code=None,
+            error_description=None,
+            messages=(
+                WhatsAppSendReceipt(
+                    provider=self.provider_name,
+                    recipient=request.recipient,
+                    status="submitted",
+                    provider_message_id="wa-7",
+                ),
+            ),
+        )
+
     def parse_events(self, payload: dict[str, object]) -> tuple[DeliveryEvent, ...]:
         self.calls.append(("parse_events", payload))
         return (
@@ -527,6 +656,25 @@ class DummyWhatsAppGateway:
     def parse_event(self, payload: dict[str, object]) -> DeliveryEvent | None:
         events = self.parse_events(payload)
         return events[0] if events else None
+
+    def parse_inbound_messages(
+        self,
+        payload: dict[str, object],
+    ) -> tuple[WhatsAppInboundMessage, ...]:
+        self.calls.append(("parse_inbound_messages", payload))
+        return (
+            WhatsAppInboundMessage(
+                provider=self.provider_name,
+                sender_id="254700000020",
+                message_id="wamid.inbound",
+                message_type="text",
+                text="hello inbound",
+            ),
+        )
+
+    def parse_inbound_message(self, payload: dict[str, object]) -> WhatsAppInboundMessage | None:
+        messages = self.parse_inbound_messages(payload)
+        return messages[0] if messages else None
 
     def close(self) -> None:
         self.closed = True
@@ -582,6 +730,116 @@ class DummyAsyncWhatsAppGateway:
             ),
         )
 
+    async def asend_media(
+        self,
+        request: WhatsAppMediaRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult:
+        self.calls.append(("asend_media", options))
+        return WhatsAppSendResult(
+            provider=self.provider_name,
+            accepted=True,
+            error_code=None,
+            error_description=None,
+            messages=(
+                WhatsAppSendReceipt(
+                    provider=self.provider_name,
+                    recipient=request.recipient,
+                    status="submitted",
+                    provider_message_id="wa-async-3",
+                ),
+            ),
+        )
+
+    async def asend_location(
+        self,
+        request: WhatsAppLocationRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult:
+        self.calls.append(("asend_location", options))
+        return WhatsAppSendResult(
+            provider=self.provider_name,
+            accepted=True,
+            error_code=None,
+            error_description=None,
+            messages=(
+                WhatsAppSendReceipt(
+                    provider=self.provider_name,
+                    recipient=request.recipient,
+                    status="submitted",
+                    provider_message_id="wa-async-4",
+                ),
+            ),
+        )
+
+    async def asend_contacts(
+        self,
+        request: WhatsAppContactsRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult:
+        self.calls.append(("asend_contacts", options))
+        return WhatsAppSendResult(
+            provider=self.provider_name,
+            accepted=True,
+            error_code=None,
+            error_description=None,
+            messages=(
+                WhatsAppSendReceipt(
+                    provider=self.provider_name,
+                    recipient=request.recipient,
+                    status="submitted",
+                    provider_message_id="wa-async-5",
+                ),
+            ),
+        )
+
+    async def asend_reaction(
+        self,
+        request: WhatsAppReactionRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult:
+        self.calls.append(("asend_reaction", options))
+        return WhatsAppSendResult(
+            provider=self.provider_name,
+            accepted=True,
+            error_code=None,
+            error_description=None,
+            messages=(
+                WhatsAppSendReceipt(
+                    provider=self.provider_name,
+                    recipient=request.recipient,
+                    status="submitted",
+                    provider_message_id="wa-async-6",
+                ),
+            ),
+        )
+
+    async def asend_interactive(
+        self,
+        request: WhatsAppInteractiveRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult:
+        self.calls.append(("asend_interactive", options))
+        return WhatsAppSendResult(
+            provider=self.provider_name,
+            accepted=True,
+            error_code=None,
+            error_description=None,
+            messages=(
+                WhatsAppSendReceipt(
+                    provider=self.provider_name,
+                    recipient=request.recipient,
+                    status="submitted",
+                    provider_message_id="wa-async-7",
+                ),
+            ),
+        )
+
     def parse_events(self, payload: dict[str, object]) -> tuple[DeliveryEvent, ...]:
         self.calls.append(("parse_events", payload))
         return (
@@ -597,6 +855,25 @@ class DummyAsyncWhatsAppGateway:
     def parse_event(self, payload: dict[str, object]) -> DeliveryEvent | None:
         events = self.parse_events(payload)
         return events[0] if events else None
+
+    def parse_inbound_messages(
+        self,
+        payload: dict[str, object],
+    ) -> tuple[WhatsAppInboundMessage, ...]:
+        self.calls.append(("parse_inbound_messages", payload))
+        return (
+            WhatsAppInboundMessage(
+                provider=self.provider_name,
+                sender_id="254700000021",
+                message_id="wamid.inbound.async",
+                message_type="text",
+                text="hello inbound async",
+            ),
+        )
+
+    def parse_inbound_message(self, payload: dict[str, object]) -> WhatsAppInboundMessage | None:
+        messages = self.parse_inbound_messages(payload)
+        return messages[0] if messages else None
 
     async def aclose(self) -> None:
         self.closed = True
@@ -1259,6 +1536,36 @@ def test_whatsapp_services_models_and_configuration_errors() -> None:
         template_name="greeting",
         language_code="en_US",
     )
+    media_request = WhatsAppMediaRequest(
+        recipient="254700000012",
+        media_type="image",
+        media_id="media-1",
+    )
+    location_request = WhatsAppLocationRequest(
+        recipient="254700000012",
+        latitude=-1.286389,
+        longitude=36.817223,
+    )
+    contacts_request = WhatsAppContactsRequest(
+        recipient="254700000012",
+        contacts=(
+            WhatsAppContact(
+                name=WhatsAppContactName(formatted_name="Alice Example"),
+                phones=(WhatsAppContactPhone(phone="+254700000012"),),
+            ),
+        ),
+    )
+    reaction_request = WhatsAppReactionRequest(
+        recipient="254700000012",
+        message_id="wamid.original",
+        emoji="👍",
+    )
+    interactive_request = WhatsAppInteractiveRequest(
+        recipient="254700000012",
+        interactive_type="button",
+        body_text="Choose one",
+        buttons=(WhatsAppInteractiveButton(identifier="opt-1", title="Option 1"),),
+    )
     options = RequestOptions(headers={"X-Test": "1"})
 
     gateway = DummyWhatsAppGateway()
@@ -1267,8 +1574,15 @@ def test_whatsapp_services_models_and_configuration_errors() -> None:
     assert service.provider == "dummy-wa"
     assert service.send_text(text_request, options=options).submitted_count == 1
     assert service.send_template(template_request, options=options).failed_count == 1
+    assert service.send_media(media_request, options=options).submitted_count == 1
+    assert service.send_location(location_request, options=options).submitted_count == 1
+    assert service.send_contacts(contacts_request, options=options).submitted_count == 1
+    assert service.send_reaction(reaction_request, options=options).submitted_count == 1
+    assert service.send_interactive(interactive_request, options=options).submitted_count == 1
     assert service.parse_events({"entry": []})[0].provider_message_id == "wa-evt-1"
     assert service.parse_event({"entry": []}).provider_message_id == "wa-evt-1"
+    assert service.parse_inbound_messages({"entry": []})[0].message_id == "wamid.inbound"
+    assert service.parse_inbound_message({"entry": []}).message_id == "wamid.inbound"
     service.close()
     assert gateway.closed is True
 
@@ -1276,7 +1590,14 @@ def test_whatsapp_services_models_and_configuration_errors() -> None:
         def parse_events(self, payload: dict[str, object]) -> tuple[DeliveryEvent, ...]:
             return ()
 
+        def parse_inbound_messages(
+            self,
+            payload: dict[str, object],
+        ) -> tuple[WhatsAppInboundMessage, ...]:
+            return ()
+
     assert WhatsAppService(EmptyWhatsAppGateway()).parse_event({}) is None
+    assert WhatsAppService(EmptyWhatsAppGateway()).parse_inbound_message({}) is None
 
     unconfigured = WhatsAppService(None)
     assert unconfigured.configured is False
@@ -1316,6 +1637,37 @@ def test_async_whatsapp_services_cover_delegation_and_configuration_errors() -> 
             template_name="promo",
             language_code="en_US",
         )
+        media_request = WhatsAppMediaRequest(
+            recipient="254700000014",
+            media_type="document",
+            media_id="media-async-1",
+            filename="guide.pdf",
+        )
+        location_request = WhatsAppLocationRequest(
+            recipient="254700000014",
+            latitude=-1.2,
+            longitude=36.8,
+        )
+        contacts_request = WhatsAppContactsRequest(
+            recipient="254700000014",
+            contacts=(
+                WhatsAppContact(
+                    name=WhatsAppContactName(formatted_name="Async Contact"),
+                    phones=(WhatsAppContactPhone(phone="+254700000014"),),
+                ),
+            ),
+        )
+        reaction_request = WhatsAppReactionRequest(
+            recipient="254700000014",
+            message_id="wamid.async.original",
+            emoji="🔥",
+        )
+        interactive_request = WhatsAppInteractiveRequest(
+            recipient="254700000014",
+            interactive_type="button",
+            body_text="Pick",
+            buttons=(WhatsAppInteractiveButton(identifier="async-1", title="Async 1"),),
+        )
         options = RequestOptions(timeout_seconds=3.0)
 
         gateway = DummyAsyncWhatsAppGateway()
@@ -1324,8 +1676,17 @@ def test_async_whatsapp_services_cover_delegation_and_configuration_errors() -> 
         assert service.provider == "dummy-wa"
         assert (await service.send_text(text_request, options=options)).submitted_count == 1
         assert (await service.send_template(template_request, options=options)).failed_count == 1
+        assert (await service.send_media(media_request, options=options)).submitted_count == 1
+        assert (await service.send_location(location_request, options=options)).submitted_count == 1
+        assert (await service.send_contacts(contacts_request, options=options)).submitted_count == 1
+        assert (await service.send_reaction(reaction_request, options=options)).submitted_count == 1
+        assert (
+            await service.send_interactive(interactive_request, options=options)
+        ).submitted_count == 1
         assert service.parse_events({})[0].provider_message_id == "wa-evt-async-1"
         assert service.parse_event({}).provider_message_id == "wa-evt-async-1"
+        assert service.parse_inbound_messages({})[0].message_id == "wamid.inbound.async"
+        assert service.parse_inbound_message({}).message_id == "wamid.inbound.async"
         await service.aclose()
         assert gateway.closed is True
 
@@ -1333,7 +1694,14 @@ def test_async_whatsapp_services_cover_delegation_and_configuration_errors() -> 
             def parse_events(self, payload: dict[str, object]) -> tuple[DeliveryEvent, ...]:
                 return ()
 
+            def parse_inbound_messages(
+                self,
+                payload: dict[str, object],
+            ) -> tuple[WhatsAppInboundMessage, ...]:
+                return ()
+
         assert AsyncWhatsAppService(EmptyAsyncWhatsAppGateway()).parse_event({}) is None
+        assert AsyncWhatsAppService(EmptyAsyncWhatsAppGateway()).parse_inbound_message({}) is None
 
         unconfigured = AsyncWhatsAppService(None)
         assert unconfigured.configured is False
@@ -1624,6 +1992,34 @@ def test_meta_gateway_sync_async_helpers_and_parser_paths() -> None:
                         "messages": [{"id": "wamid.4", "message_status": "sent"}],
                     },
                 ),
+                make_response(
+                    200,
+                    {
+                        "contacts": [{"wa_id": "254700000021"}],
+                        "messages": [{"id": "wamid.5", "message_status": "accepted"}],
+                    },
+                ),
+                make_response(
+                    200,
+                    {
+                        "contacts": [{"wa_id": "254700000021"}],
+                        "messages": [{"id": "wamid.6", "message_status": "accepted"}],
+                    },
+                ),
+                make_response(
+                    200,
+                    {
+                        "contacts": [{"wa_id": "254700000021"}],
+                        "messages": [{"id": "wamid.7", "message_status": "accepted"}],
+                    },
+                ),
+                make_response(
+                    200,
+                    {
+                        "contacts": [{"wa_id": "254700000021"}],
+                        "messages": [{"id": "wamid.8", "message_status": "accepted"}],
+                    },
+                ),
             ]
         )
         gateway = MetaWhatsAppGateway(
@@ -1669,6 +2065,52 @@ def test_meta_gateway_sync_async_helpers_and_parser_paths() -> None:
                 )
             )
         ).messages[0].provider_message_id == "wamid.4"
+        assert (
+            await gateway.asend_location(
+                WhatsAppLocationRequest(
+                    recipient="254700000021",
+                    latitude=-1.286389,
+                    longitude=36.817223,
+                )
+            )
+        ).messages[0].provider_message_id == "wamid.5"
+        assert (
+            await gateway.asend_contacts(
+                WhatsAppContactsRequest(
+                    recipient="254700000021",
+                    contacts=(
+                        WhatsAppContact(
+                            name=WhatsAppContactName(formatted_name="Async Alice"),
+                            phones=(WhatsAppContactPhone(phone="+254700000021"),),
+                        ),
+                    ),
+                )
+            )
+        ).messages[0].provider_message_id == "wamid.6"
+        assert (
+            await gateway.asend_reaction(
+                WhatsAppReactionRequest(
+                    recipient="254700000021",
+                    message_id="wamid.parent",
+                    emoji="✅",
+                )
+            )
+        ).messages[0].provider_message_id == "wamid.7"
+        assert (
+            await gateway.asend_interactive(
+                WhatsAppInteractiveRequest(
+                    recipient="254700000021",
+                    interactive_type="button",
+                    body_text="Pick one",
+                    buttons=(
+                        WhatsAppInteractiveButton(
+                            identifier="choice-1",
+                            title="Choice 1",
+                        ),
+                    ),
+                )
+            )
+        ).messages[0].provider_message_id == "wamid.8"
         assert gateway._messages_path() == f"/{gateway.api_version}/12345/messages"
 
         events = gateway.parse_events(
@@ -1705,6 +2147,24 @@ def test_meta_gateway_sync_async_helpers_and_parser_paths() -> None:
         assert events[0].error_description == "No route"
         assert gateway.parse_events({"entry": "invalid"}) == ()
         assert gateway.parse_event({"entry": []}) is None
+        assert (
+            gateway.parse_inbound_messages(
+                {
+                    "entry": [
+                        {
+                            "changes": [
+                                {
+                                    "value": {
+                                        "messages": "invalid",
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                }
+            )
+            == ()
+        )
         assert gateway.parse_event(
             {
                 "entry": [
@@ -1825,6 +2285,280 @@ def test_meta_gateway_sync_async_helpers_and_parser_paths() -> None:
     asyncio.run(run())
 
 
+def test_meta_gateway_builder_and_inbound_edge_paths() -> None:
+    full_contact = WhatsAppContact(
+        name=WhatsAppContactName(
+            formatted_name="Alice Example",
+            first_name="Alice",
+            last_name="Example",
+        ),
+        phones=(WhatsAppContactPhone(phone="+254700000031", type="CELL", wa_id="254700000031"),),
+        emails=(WhatsAppContactEmail(email="alice@example.com", type="WORK"),),
+        urls=(WhatsAppContactUrl(url="https://example.com/alice", type="WORK"),),
+        addresses=(
+            WhatsAppContactAddress(
+                street="1 Main Street",
+                city="Nairobi",
+                state="Nairobi",
+                zip="00100",
+                country="Kenya",
+                country_code="KE",
+                type="HOME",
+            ),
+        ),
+        org=WhatsAppContactOrg(company="Noria", department="Growth", title="Lead"),
+        birthday="1990-01-01",
+    )
+
+    contacts_payload = meta_gateway_module._build_contacts_payload(
+        WhatsAppContactsRequest(
+            recipient="254700000031",
+            contacts=(full_contact,),
+            provider_options={"biz_opaque_callback_data": "cb-contacts"},
+        )
+    )
+    assert contacts_payload["biz_opaque_callback_data"] == "cb-contacts"
+    assert contacts_payload["contacts"][0]["emails"][0] == {
+        "email": "alice@example.com",
+        "type": "WORK",
+    }
+    assert contacts_payload["contacts"][0]["urls"][0] == {
+        "url": "https://example.com/alice",
+        "type": "WORK",
+    }
+    assert contacts_payload["contacts"][0]["org"] == {
+        "company": "Noria",
+        "department": "Growth",
+        "title": "Lead",
+    }
+    assert contacts_payload["contacts"][0]["birthday"] == "1990-01-01"
+    with pytest.raises(ValueError, match="contacts must not be empty"):
+        meta_gateway_module._build_contacts_payload(
+            WhatsAppContactsRequest(recipient="254700000031", contacts=())
+        )
+
+    with pytest.raises(ValueError, match="either media_id or link"):
+        meta_gateway_module._build_media_object(
+            media_id="media-1",
+            link="https://cdn.test/file.pdf",
+            field_name="media",
+        )
+    with pytest.raises(ValueError, match="requires either media_id or link"):
+        meta_gateway_module._build_media_object(media_id=None, link=None, field_name="media")
+
+    interactive_payload = meta_gateway_module._build_interactive_payload(
+        WhatsAppInteractiveRequest(
+            recipient="254700000031",
+            interactive_type="button",
+            body_text="Choose your path",
+            header=WhatsAppInteractiveHeader(
+                type="document",
+                link="https://cdn.test/guide.pdf",
+                filename="guide.pdf",
+            ),
+            buttons=(WhatsAppInteractiveButton(identifier="choice-1", title="Choice 1"),),
+        )
+    )
+    assert interactive_payload["interactive"]["header"] == {
+        "type": "document",
+        "document": {
+            "link": "https://cdn.test/guide.pdf",
+            "filename": "guide.pdf",
+        },
+    }
+    assert interactive_payload["interactive"]["action"]["buttons"][0] == {
+        "type": "reply",
+        "reply": {"id": "choice-1", "title": "Choice 1"},
+    }
+    with pytest.raises(ValueError, match="buttons must not be empty"):
+        meta_gateway_module._build_interactive_payload(
+            WhatsAppInteractiveRequest(
+                recipient="254700000031",
+                interactive_type="button",
+                body_text="Missing buttons",
+            )
+        )
+    with pytest.raises(ValueError, match="sections must not be empty"):
+        meta_gateway_module._build_interactive_payload(
+            WhatsAppInteractiveRequest(
+                recipient="254700000031",
+                interactive_type="list",
+                body_text="Missing sections",
+                button_text="Choose",
+            )
+        )
+    with pytest.raises(ValueError, match="rows must not be empty"):
+        meta_gateway_module._build_interactive_section(
+            WhatsAppInteractiveSection(rows=(), title="Empty")
+        )
+
+    assert (
+        meta_gateway_module._build_inbound_message(
+            provider_name="meta",
+            payload={"from": "254700000031"},
+            profiles={},
+            webhook_metadata={},
+        )
+        is None
+    )
+    media_message = meta_gateway_module._build_inbound_message(
+        provider_name="meta",
+        payload={
+            "from": "254700000031",
+            "id": "wamid.image-empty",
+            "type": "image",
+            "image": {},
+        },
+        profiles={},
+        webhook_metadata={},
+    )
+    assert media_message is not None
+    assert media_message.media is None
+    location_message = meta_gateway_module._build_inbound_message(
+        provider_name="meta",
+        payload={
+            "from": "254700000031",
+            "id": "wamid.location-empty",
+            "type": "location",
+            "location": {},
+        },
+        profiles={},
+        webhook_metadata={},
+    )
+    assert location_message is not None
+    assert location_message.location is None
+    button_message = meta_gateway_module._build_inbound_message(
+        provider_name="meta",
+        payload={
+            "from": "254700000031",
+            "id": "wamid.button-empty",
+            "type": "button",
+            "button": {},
+        },
+        profiles={},
+        webhook_metadata={},
+    )
+    assert button_message is not None
+    assert button_message.reply is None
+    interactive_message = meta_gateway_module._build_inbound_message(
+        provider_name="meta",
+        payload={
+            "from": "254700000031",
+            "id": "wamid.interactive-button",
+            "type": "interactive",
+            "interactive": {
+                "type": "button_reply",
+                "button_reply": {"id": "btn-1", "title": "Button 1"},
+            },
+        },
+        profiles={},
+        webhook_metadata={},
+    )
+    assert interactive_message is not None
+    assert interactive_message.reply is not None
+    assert interactive_message.reply.reply_type == "button_reply"
+    unsupported_interactive_message = meta_gateway_module._build_inbound_message(
+        provider_name="meta",
+        payload={
+            "from": "254700000031",
+            "id": "wamid.interactive-unsupported",
+            "type": "interactive",
+            "interactive": {"type": "nfm_reply"},
+        },
+        profiles={},
+        webhook_metadata={},
+    )
+    assert unsupported_interactive_message is not None
+    assert unsupported_interactive_message.reply is None
+    reaction_message = meta_gateway_module._build_inbound_message(
+        provider_name="meta",
+        payload={
+            "from": "254700000031",
+            "id": "wamid.reaction-empty",
+            "type": "reaction",
+            "reaction": {},
+        },
+        profiles={},
+        webhook_metadata={},
+    )
+    assert reaction_message is not None
+    assert reaction_message.reaction is None
+    contacts_message = meta_gateway_module._build_inbound_message(
+        provider_name="meta",
+        payload={
+            "from": "254700000032",
+            "id": "wamid.contacts-full",
+            "type": "contacts",
+            "context": {
+                "message_id": "wamid.parent",
+                "forwarded": True,
+                "frequently_forwarded": False,
+            },
+            "contacts": [
+                {"name": {}},
+                {
+                    "name": {
+                        "formatted_name": "Alice Example",
+                        "first_name": "Alice",
+                        "last_name": "Example",
+                    },
+                    "phones": [
+                        {
+                            "phone": "+254700000032",
+                            "type": "CELL",
+                            "wa_id": "254700000032",
+                        }
+                    ],
+                    "emails": [{"email": "alice@example.com", "type": "WORK"}],
+                    "urls": [{"url": "https://example.com", "type": "WORK"}],
+                    "addresses": [
+                        {
+                            "street": "2 Example Road",
+                            "city": "Nairobi",
+                            "state": "Nairobi",
+                            "zip": "00100",
+                            "country": "Kenya",
+                            "country_code": "KE",
+                            "type": "HOME",
+                        }
+                    ],
+                    "org": {
+                        "company": "Noria",
+                        "department": "Ops",
+                        "title": "Manager",
+                    },
+                    "birthday": "1991-02-03",
+                },
+            ],
+        },
+        profiles={"254700000032": "Alice Profile"},
+        webhook_metadata={
+            "display_phone_number": "254700000099",
+            "phone_number_id": "99999",
+        },
+    )
+    assert contacts_message is not None
+    assert contacts_message.profile_name == "Alice Profile"
+    assert contacts_message.context_message_id == "wamid.parent"
+    assert contacts_message.forwarded is True
+    assert contacts_message.frequently_forwarded is False
+    assert contacts_message.metadata == {
+        "display_phone_number": "254700000099",
+        "phone_number_id": "99999",
+    }
+    assert len(contacts_message.contacts) == 1
+    assert contacts_message.contacts[0].emails[0].email == "alice@example.com"
+    assert contacts_message.contacts[0].urls[0].url == "https://example.com"
+    assert contacts_message.contacts[0].addresses[0].country_code == "KE"
+    assert contacts_message.contacts[0].org is not None
+    assert contacts_message.contacts[0].org.company == "Noria"
+    assert contacts_message.contacts[0].birthday == "1991-02-03"
+
+    assert meta_gateway_module._coerce_float(5) == 5.0
+    assert meta_gateway_module._coerce_float(None) is None
+    assert meta_gateway_module._coerce_float("not-a-number") is None
+
+
 def test_webhook_helpers_cover_fastapi_flask_and_onfon_paths() -> None:
     sms_gateway = OnfonSmsGateway(access_key="a", api_key="b", client_id="c")
     whatsapp_gateway = MetaWhatsAppGateway(
@@ -1887,6 +2621,15 @@ def test_webhook_helpers_cover_fastapi_flask_and_onfon_paths() -> None:
         )
         == ()
     )
+    assert (
+        asyncio.run(
+            fastapi_parse_meta_inbound_messages(
+                FakeFastAPIRequest(payload=payload),
+                whatsapp_gateway,
+            )
+        )
+        == ()
+    )
     assert flask_parse_meta_delivery_events(
         FakeFlaskRequest(
             json_payload={
@@ -1919,6 +2662,15 @@ def test_webhook_helpers_cover_fastapi_flask_and_onfon_paths() -> None:
             ),
             whatsapp_gateway,
             require_signature=True,
+        )
+        == ()
+    )
+    assert (
+        flask_parse_meta_inbound_messages(
+            FakeFlaskRequest(
+                json_payload=["not-a-dict"],
+            ),
+            whatsapp_gateway,
         )
         == ()
     )
