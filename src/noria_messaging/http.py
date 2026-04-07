@@ -64,6 +64,8 @@ class HttpClient:
                     headers=context.headers,
                     query=options.query,
                     body=context.body,
+                    form=options.form,
+                    files=options.files,
                     timeout_seconds=timeout_seconds,
                 )
             except httpx.TimeoutException as error:
@@ -147,6 +149,8 @@ class HttpClient:
         headers: Mapping[str, str],
         query: Mapping[str, str | int | float | bool | None] | None,
         body: object,
+        form: Mapping[str, object] | None,
+        files: Mapping[str, object] | None,
         timeout_seconds: float | None,
     ) -> Any:
         request_kwargs = _build_request_kwargs(
@@ -155,6 +159,8 @@ class HttpClient:
             headers=headers,
             query=query,
             body=body,
+            form=form,
+            files=files,
             timeout_seconds=timeout_seconds,
         )
         return self.client.request(**request_kwargs)
@@ -260,6 +266,8 @@ class AsyncHttpClient:
                     headers=context.headers,
                     query=options.query,
                     body=context.body,
+                    form=options.form,
+                    files=options.files,
                     timeout_seconds=timeout_seconds,
                 )
             except httpx.TimeoutException as error:
@@ -343,6 +351,8 @@ class AsyncHttpClient:
         headers: Mapping[str, str],
         query: Mapping[str, str | int | float | bool | None] | None,
         body: object,
+        form: Mapping[str, object] | None,
+        files: Mapping[str, object] | None,
         timeout_seconds: float | None,
     ) -> Any:
         request_kwargs = _build_request_kwargs(
@@ -351,6 +361,8 @@ class AsyncHttpClient:
             headers=headers,
             query=query,
             body=body,
+            form=form,
+            files=files,
             timeout_seconds=timeout_seconds,
         )
         return await self.client.request(**request_kwargs)
@@ -489,6 +501,8 @@ def _build_request_kwargs(
     headers: Mapping[str, str],
     query: Mapping[str, str | int | float | bool | None] | None,
     body: object,
+    form: Mapping[str, object] | None,
+    files: Mapping[str, object] | None,
     timeout_seconds: float | None,
 ) -> dict[str, Any]:
     params = {key: value for key, value in (query or {}).items() if value is not None}
@@ -499,6 +513,19 @@ def _build_request_kwargs(
         "params": params or None,
         "timeout": timeout_seconds,
     }
+    normalized_form = dict(form or {})
+    normalized_files = dict(files or {})
+
+    if normalized_form or normalized_files:
+        request_kwargs["data"] = normalized_form or None
+        request_kwargs["files"] = normalized_files or None
+        if any(key.lower() == "content-type" for key in request_kwargs["headers"]):
+            request_kwargs["headers"] = {
+                key: value
+                for key, value in request_kwargs["headers"].items()
+                if key.lower() != "content-type"
+            }
+        return request_kwargs
 
     if body is not None:
         if isinstance(body, (str, bytes, bytearray)):

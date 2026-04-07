@@ -1,14 +1,32 @@
 [project]
 name = "noria-messaging"
 version = "0.1.0"
-description = "Reusable Python messaging SDK with channel-oriented gateway integrations."
+description = "Async-first Python SDK for SMS and WhatsApp messaging with Onfon and Meta Cloud API."
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Noria Labs" }]
 license = "MIT"
+keywords = ["sms", "whatsapp", "messaging", "onfon", "meta", "httpx", "async"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Communications",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 dependencies = [
     "httpx>=0.27.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/thekiharani/noria-messaging"
+Repository = "https://github.com/thekiharani/noria-messaging"
+Issues = "https://github.com/thekiharani/noria-messaging/issues"
 
 [project.optional-dependencies]
 dev = [

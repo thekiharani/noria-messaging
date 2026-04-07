@@ -7,11 +7,19 @@ from ...exceptions import ConfigurationError
 from ...types import RequestOptions
 from .gateways.base import AsyncWhatsAppGateway, WhatsAppGateway
 from .models import (
+    WhatsAppCatalogMessageRequest,
     WhatsAppContactsRequest,
+    WhatsAppFlowMessageRequest,
     WhatsAppInboundMessage,
     WhatsAppInteractiveRequest,
     WhatsAppLocationRequest,
+    WhatsAppMediaDeleteResult,
+    WhatsAppMediaInfo,
     WhatsAppMediaRequest,
+    WhatsAppMediaUploadRequest,
+    WhatsAppMediaUploadResult,
+    WhatsAppProductListRequest,
+    WhatsAppProductMessageRequest,
     WhatsAppReactionRequest,
     WhatsAppSendResult,
     WhatsAppTemplateRequest,
@@ -88,6 +96,62 @@ class WhatsAppService:
         options: RequestOptions | None = None,
     ) -> WhatsAppSendResult:
         return _require_gateway(self.gateway).send_interactive(request, options=options)
+
+    def send_catalog(
+        self,
+        request: WhatsAppCatalogMessageRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult:
+        return _require_gateway(self.gateway).send_catalog(request, options=options)
+
+    def send_product(
+        self,
+        request: WhatsAppProductMessageRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult:
+        return _require_gateway(self.gateway).send_product(request, options=options)
+
+    def send_product_list(
+        self,
+        request: WhatsAppProductListRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult:
+        return _require_gateway(self.gateway).send_product_list(request, options=options)
+
+    def send_flow(
+        self,
+        request: WhatsAppFlowMessageRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult:
+        return _require_gateway(self.gateway).send_flow(request, options=options)
+
+    def upload_media(
+        self,
+        request: WhatsAppMediaUploadRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppMediaUploadResult:
+        return _require_gateway(self.gateway).upload_media(request, options=options)
+
+    def get_media(
+        self,
+        media_id: str,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppMediaInfo:
+        return _require_gateway(self.gateway).get_media(media_id, options=options)
+
+    def delete_media(
+        self,
+        media_id: str,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppMediaDeleteResult:
+        return _require_gateway(self.gateway).delete_media(media_id, options=options)
 
     def parse_events(self, payload: Mapping[str, object]) -> tuple[DeliveryEvent, ...]:
         return _require_gateway(self.gateway).parse_events(payload)
@@ -181,6 +245,68 @@ class AsyncWhatsAppService:
     ) -> WhatsAppSendResult:
         return await _require_async_gateway(self.gateway).asend_interactive(
             request,
+            options=options,
+        )
+
+    async def send_catalog(
+        self,
+        request: WhatsAppCatalogMessageRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult:
+        return await _require_async_gateway(self.gateway).asend_catalog(request, options=options)
+
+    async def send_product(
+        self,
+        request: WhatsAppProductMessageRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult:
+        return await _require_async_gateway(self.gateway).asend_product(request, options=options)
+
+    async def send_product_list(
+        self,
+        request: WhatsAppProductListRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult:
+        return await _require_async_gateway(self.gateway).asend_product_list(
+            request,
+            options=options,
+        )
+
+    async def send_flow(
+        self,
+        request: WhatsAppFlowMessageRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult:
+        return await _require_async_gateway(self.gateway).asend_flow(request, options=options)
+
+    async def upload_media(
+        self,
+        request: WhatsAppMediaUploadRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppMediaUploadResult:
+        return await _require_async_gateway(self.gateway).aupload_media(request, options=options)
+
+    async def get_media(
+        self,
+        media_id: str,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppMediaInfo:
+        return await _require_async_gateway(self.gateway).aget_media(media_id, options=options)
+
+    async def delete_media(
+        self,
+        media_id: str,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppMediaDeleteResult:
+        return await _require_async_gateway(self.gateway).adelete_media(
+            media_id,
             options=options,
         )
 

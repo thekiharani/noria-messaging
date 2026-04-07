@@ -11,6 +11,11 @@ Current supported providers:
 
 Third-party WhatsApp relays such as Twilio are intentionally out of scope.
 
+## Project Links
+
+- Repository: `https://github.com/thekiharani/noria-messaging`
+- Issue tracker: `https://github.com/thekiharani/noria-messaging/issues`
+
 ## Install
 
 ```bash
@@ -35,7 +40,7 @@ Implemented now:
 - request/response hooks for observability
 - normalized error types
 - SMS service with Onfon send, balance, delivery reports, groups, and templates
-- WhatsApp service with Meta Cloud API text, template, media, location, contacts, reaction, and interactive button/list sends
+- WhatsApp service with Meta Cloud API text, template, media, location, contacts, reaction, button/list interactive sends, product/catalog/product-list/flow interactive sends, and media ID helpers
 - normalized Meta delivery-status parsing
 - normalized Meta inbound message parsing
 - FastAPI and Flask webhook helpers for Onfon and Meta
@@ -43,8 +48,6 @@ Implemented now:
 Not implemented yet:
 
 - additional SMS gateways
-- product, catalog, and flow-style WhatsApp interactive messages
-- Meta media upload helpers for creating media IDs
 - extra framework helpers beyond FastAPI and Flask
 
 ## Design
@@ -77,6 +80,8 @@ from noria_messaging import (
     WhatsAppTemplateComponent,
     WhatsAppTemplateParameter,
     WhatsAppMediaRequest,
+    WhatsAppMediaUploadRequest,
+    WhatsAppMediaInfo,
     WhatsAppLocationRequest,
     WhatsAppContact,
     WhatsAppContactName,
@@ -87,6 +92,12 @@ from noria_messaging import (
     WhatsAppInteractiveRequest,
     WhatsAppInteractiveRow,
     WhatsAppInteractiveSection,
+    WhatsAppCatalogMessageRequest,
+    WhatsAppProductMessageRequest,
+    WhatsAppProductItem,
+    WhatsAppProductListRequest,
+    WhatsAppProductSection,
+    WhatsAppFlowMessageRequest,
     GatewayError,
     ConfigurationError,
     ApiError,
@@ -146,6 +157,11 @@ Examples:
 - `WhatsAppTemplateRequest`
 - `WhatsAppMediaRequest`
 - `WhatsAppInteractiveRequest`
+- `WhatsAppCatalogMessageRequest`
+- `WhatsAppProductMessageRequest`
+- `WhatsAppProductListRequest`
+- `WhatsAppFlowMessageRequest`
+- `WhatsAppMediaUploadRequest`
 
 ### Normalized Events
 
@@ -427,6 +443,29 @@ Supported media types:
 - `sticker`
 - `video`
 
+### Upload, Inspect, and Delete Meta Media
+
+Use this when you want Meta-hosted media IDs before sending a message.
+
+```python
+from noria_messaging import WhatsAppMediaUploadRequest
+
+upload = await messaging.whatsapp.upload_media(
+    WhatsAppMediaUploadRequest(
+        filename="poster.png",
+        content=b"...binary image bytes...",
+        mime_type="image/png",
+    )
+)
+
+media = await messaging.whatsapp.get_media(upload.media_id)
+deleted = await messaging.whatsapp.delete_media(upload.media_id)
+
+print(upload.media_id)
+print(media.url, media.mime_type, media.file_size)
+print(deleted.deleted)
+```
+
 ### Send Location
 
 ```python
@@ -517,7 +556,9 @@ result = await messaging.whatsapp.send_reaction(
 )
 ```
 
-### Send Interactive Messages
+### Send Interactive Button and List Messages
+
+Use `send_interactive(...)` for button and list messages only.
 
 Button messages:
 
@@ -606,6 +647,86 @@ result = await messaging.whatsapp.send_interactive(
     )
 )
 ```
+
+### Send Catalog Messages
+
+```python
+from noria_messaging import WhatsAppCatalogMessageRequest
+
+result = await messaging.whatsapp.send_catalog(
+    WhatsAppCatalogMessageRequest(
+        recipient="254712345678",
+        body_text="Browse the latest collection",
+        thumbnail_product_retailer_id="sku-1",
+    )
+)
+```
+
+### Send Single-Product Messages
+
+```python
+from noria_messaging import WhatsAppProductMessageRequest
+
+result = await messaging.whatsapp.send_product(
+    WhatsAppProductMessageRequest(
+        recipient="254712345678",
+        catalog_id="catalog-1",
+        product_retailer_id="sku-1",
+        body_text="Featured product",
+    )
+)
+```
+
+### Send Product-List Messages
+
+```python
+from noria_messaging import (
+    WhatsAppInteractiveHeader,
+    WhatsAppProductItem,
+    WhatsAppProductListRequest,
+    WhatsAppProductSection,
+)
+
+result = await messaging.whatsapp.send_product_list(
+    WhatsAppProductListRequest(
+        recipient="254712345678",
+        catalog_id="catalog-1",
+        header=WhatsAppInteractiveHeader(type="text", text="Store"),
+        body_text="Choose a bundle",
+        sections=[
+            WhatsAppProductSection(
+                title="Popular",
+                product_items=[
+                    WhatsAppProductItem(product_retailer_id="sku-1"),
+                    WhatsAppProductItem(product_retailer_id="sku-2"),
+                ],
+            )
+        ],
+    )
+)
+```
+
+### Send Flow Messages
+
+```python
+from noria_messaging import WhatsAppFlowMessageRequest
+
+result = await messaging.whatsapp.send_flow(
+    WhatsAppFlowMessageRequest(
+        recipient="254712345678",
+        flow_id="flow-123",
+        flow_cta="Open flow",
+        body_text="Complete onboarding",
+        flow_token="customer-123",
+        flow_action_payload={
+            "screen": "DETAILS",
+            "data": {"customer_id": "cust-1"},
+        },
+    )
+)
+```
+
+`WhatsAppFlowMessageRequest` supports either `flow_id` or `flow_name`, but not both.
 
 ## Request-Level Customization
 
@@ -974,6 +1095,8 @@ Examples:
 - `WhatsAppTextRequest.provider_options`
 - `WhatsAppTemplateParameter.provider_options`
 - `WhatsAppInteractiveHeader.provider_options`
+- `WhatsAppFlowMessageRequest.provider_options`
+- `WhatsAppMediaUploadRequest.provider_options`
 
 Use these sparingly. Prefer the typed request fields first.
 
@@ -1003,8 +1126,6 @@ For example, a new SMS provider should implement the SMS gateway protocol and re
 
 Do not force non-SMS channels into the SMS gateway abstraction. WhatsApp already has its own service and models for that reason.
 
-## Source Notes
-
-The Onfon SMS implementation was built from the local `ONFON_HTTP_SMS_API_GUIDE.md`.
+## Notes
 
 The WhatsApp implementation targets Meta's official Cloud API shape only.

@@ -9,6 +9,7 @@ WhatsAppComponentType = Literal["header", "body", "button"]
 WhatsAppMediaType = Literal["image", "audio", "document", "sticker", "video"]
 WhatsAppInteractiveType = Literal["button", "list"]
 WhatsAppInteractiveHeaderType = Literal["text", "image", "video", "document"]
+WhatsAppFlowActionType = Literal["navigate", "data_exchange"]
 WhatsAppInboundMessageType = Literal[
     "text",
     "image",
@@ -206,6 +207,107 @@ class WhatsAppInteractiveRequest:
     reply_to_message_id: str | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
     provider_options: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class WhatsAppCatalogMessageRequest:
+    recipient: str
+    body_text: str | None = None
+    header: WhatsAppInteractiveHeader | None = None
+    footer_text: str | None = None
+    thumbnail_product_retailer_id: str | None = None
+    reply_to_message_id: str | None = None
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+    provider_options: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class WhatsAppProductItem:
+    product_retailer_id: str
+
+
+@dataclass(slots=True)
+class WhatsAppProductMessageRequest:
+    recipient: str
+    catalog_id: str
+    product_retailer_id: str
+    body_text: str | None = None
+    footer_text: str | None = None
+    reply_to_message_id: str | None = None
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+    provider_options: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class WhatsAppProductSection:
+    title: str
+    product_items: Sequence[WhatsAppProductItem]
+
+
+@dataclass(slots=True)
+class WhatsAppProductListRequest:
+    recipient: str
+    catalog_id: str
+    sections: Sequence[WhatsAppProductSection]
+    header: WhatsAppInteractiveHeader
+    body_text: str | None = None
+    footer_text: str | None = None
+    reply_to_message_id: str | None = None
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+    provider_options: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class WhatsAppFlowMessageRequest:
+    recipient: str
+    flow_cta: str
+    flow_id: str | None = None
+    flow_name: str | None = None
+    body_text: str | None = None
+    header: WhatsAppInteractiveHeader | None = None
+    footer_text: str | None = None
+    flow_token: str | None = None
+    flow_action: WhatsAppFlowActionType = "navigate"
+    flow_action_payload: Mapping[str, Any] = field(default_factory=dict)
+    flow_message_version: str = "3"
+    reply_to_message_id: str | None = None
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+    provider_options: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class WhatsAppMediaUploadRequest:
+    filename: str
+    content: bytes | bytearray | memoryview
+    mime_type: str
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+    provider_options: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class WhatsAppMediaUploadResult:
+    provider: str
+    media_id: str
+    raw: object = None
+
+
+@dataclass(slots=True)
+class WhatsAppMediaInfo:
+    provider: str
+    media_id: str
+    url: str | None = None
+    mime_type: str | None = None
+    sha256: str | None = None
+    file_size: int | None = None
+    raw: object = None
+
+
+@dataclass(slots=True)
+class WhatsAppMediaDeleteResult:
+    provider: str
+    media_id: str
+    deleted: bool
+    raw: object = None
 
 
 @dataclass(slots=True)

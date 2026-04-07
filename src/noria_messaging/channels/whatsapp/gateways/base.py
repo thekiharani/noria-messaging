@@ -6,11 +6,19 @@ from typing import Protocol, runtime_checkable
 from ....events import DeliveryEvent
 from ....types import RequestOptions
 from ..models import (
+    WhatsAppCatalogMessageRequest,
     WhatsAppContactsRequest,
+    WhatsAppFlowMessageRequest,
     WhatsAppInboundMessage,
     WhatsAppInteractiveRequest,
     WhatsAppLocationRequest,
+    WhatsAppMediaDeleteResult,
+    WhatsAppMediaInfo,
     WhatsAppMediaRequest,
+    WhatsAppMediaUploadRequest,
+    WhatsAppMediaUploadResult,
+    WhatsAppProductListRequest,
+    WhatsAppProductMessageRequest,
     WhatsAppReactionRequest,
     WhatsAppSendResult,
     WhatsAppTemplateRequest,
@@ -70,6 +78,55 @@ class WhatsAppGateway(Protocol):
         *,
         options: RequestOptions | None = None,
     ) -> WhatsAppSendResult: ...
+
+    def send_catalog(
+        self,
+        request: WhatsAppCatalogMessageRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult: ...
+
+    def send_product(
+        self,
+        request: WhatsAppProductMessageRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult: ...
+
+    def send_product_list(
+        self,
+        request: WhatsAppProductListRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult: ...
+
+    def send_flow(
+        self,
+        request: WhatsAppFlowMessageRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult: ...
+
+    def upload_media(
+        self,
+        request: WhatsAppMediaUploadRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppMediaUploadResult: ...
+
+    def get_media(
+        self,
+        media_id: str,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppMediaInfo: ...
+
+    def delete_media(
+        self,
+        media_id: str,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppMediaDeleteResult: ...
 
     def parse_events(self, payload: Mapping[str, object]) -> tuple[DeliveryEvent, ...]: ...
 
@@ -140,6 +197,55 @@ class AsyncWhatsAppGateway(Protocol):
         *,
         options: RequestOptions | None = None,
     ) -> WhatsAppSendResult: ...
+
+    async def asend_catalog(
+        self,
+        request: WhatsAppCatalogMessageRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult: ...
+
+    async def asend_product(
+        self,
+        request: WhatsAppProductMessageRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult: ...
+
+    async def asend_product_list(
+        self,
+        request: WhatsAppProductListRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult: ...
+
+    async def asend_flow(
+        self,
+        request: WhatsAppFlowMessageRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult: ...
+
+    async def aupload_media(
+        self,
+        request: WhatsAppMediaUploadRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppMediaUploadResult: ...
+
+    async def aget_media(
+        self,
+        media_id: str,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppMediaInfo: ...
+
+    async def adelete_media(
+        self,
+        media_id: str,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppMediaDeleteResult: ...
 
     def parse_events(self, payload: Mapping[str, object]) -> tuple[DeliveryEvent, ...]: ...
 

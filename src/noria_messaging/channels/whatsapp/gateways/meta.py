@@ -12,6 +12,7 @@ from ....http import AsyncHttpClient, HttpClient
 from ....types import Hooks, HttpRequestOptions, RequestOptions, RetryPolicy
 from ....utils import coerce_string, merge_headers, to_object
 from ..models import (
+    WhatsAppCatalogMessageRequest,
     WhatsAppContact,
     WhatsAppContactAddress,
     WhatsAppContactEmail,
@@ -20,6 +21,7 @@ from ..models import (
     WhatsAppContactPhone,
     WhatsAppContactsRequest,
     WhatsAppContactUrl,
+    WhatsAppFlowMessageRequest,
     WhatsAppInboundLocation,
     WhatsAppInboundMedia,
     WhatsAppInboundMessage,
@@ -31,7 +33,15 @@ from ..models import (
     WhatsAppInteractiveRow,
     WhatsAppInteractiveSection,
     WhatsAppLocationRequest,
+    WhatsAppMediaDeleteResult,
+    WhatsAppMediaInfo,
     WhatsAppMediaRequest,
+    WhatsAppMediaUploadRequest,
+    WhatsAppMediaUploadResult,
+    WhatsAppProductItem,
+    WhatsAppProductListRequest,
+    WhatsAppProductMessageRequest,
+    WhatsAppProductSection,
     WhatsAppReactionRequest,
     WhatsAppSendReceipt,
     WhatsAppSendResult,
@@ -75,7 +85,6 @@ class MetaWhatsAppGateway:
             self.default_headers,
             {
                 "Authorization": f"Bearer {self.access_token}",
-                "Content-Type": "application/json",
             },
         )
 
@@ -247,6 +256,212 @@ class MetaWhatsAppGateway:
             options=options,
         )
 
+    def send_catalog(
+        self,
+        request: WhatsAppCatalogMessageRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult:
+        return self._send_request(
+            request.recipient,
+            _build_catalog_message_payload(request),
+            options=options,
+        )
+
+    async def asend_catalog(
+        self,
+        request: WhatsAppCatalogMessageRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult:
+        return await self._asend_request(
+            request.recipient,
+            _build_catalog_message_payload(request),
+            options=options,
+        )
+
+    def send_product(
+        self,
+        request: WhatsAppProductMessageRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult:
+        return self._send_request(
+            request.recipient,
+            _build_product_message_payload(request),
+            options=options,
+        )
+
+    async def asend_product(
+        self,
+        request: WhatsAppProductMessageRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult:
+        return await self._asend_request(
+            request.recipient,
+            _build_product_message_payload(request),
+            options=options,
+        )
+
+    def send_product_list(
+        self,
+        request: WhatsAppProductListRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult:
+        return self._send_request(
+            request.recipient,
+            _build_product_list_payload(request),
+            options=options,
+        )
+
+    async def asend_product_list(
+        self,
+        request: WhatsAppProductListRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult:
+        return await self._asend_request(
+            request.recipient,
+            _build_product_list_payload(request),
+            options=options,
+        )
+
+    def send_flow(
+        self,
+        request: WhatsAppFlowMessageRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult:
+        return self._send_request(
+            request.recipient,
+            _build_flow_message_payload(request),
+            options=options,
+        )
+
+    async def asend_flow(
+        self,
+        request: WhatsAppFlowMessageRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult:
+        return await self._asend_request(
+            request.recipient,
+            _build_flow_message_payload(request),
+            options=options,
+        )
+
+    def upload_media(
+        self,
+        request: WhatsAppMediaUploadRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppMediaUploadResult:
+        response = self._request(
+            HttpRequestOptions(
+                path=self._media_upload_path(),
+                method="POST",
+                form=_build_media_upload_form(request),
+                files=_build_media_upload_files(request),
+                headers=options.headers if options else None,
+                timeout_seconds=options.timeout_seconds if options else None,
+                retry=options.retry if options else None,
+            )
+        )
+        return _build_media_upload_result(self.provider_name, response)
+
+    async def aupload_media(
+        self,
+        request: WhatsAppMediaUploadRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppMediaUploadResult:
+        response = await self._arequest(
+            HttpRequestOptions(
+                path=self._media_upload_path(),
+                method="POST",
+                form=_build_media_upload_form(request),
+                files=_build_media_upload_files(request),
+                headers=options.headers if options else None,
+                timeout_seconds=options.timeout_seconds if options else None,
+                retry=options.retry if options else None,
+            )
+        )
+        return _build_media_upload_result(self.provider_name, response)
+
+    def get_media(
+        self,
+        media_id: str,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppMediaInfo:
+        response = self._request(
+            HttpRequestOptions(
+                path=self._media_path(media_id),
+                method="GET",
+                query=self._media_query(),
+                headers=options.headers if options else None,
+                timeout_seconds=options.timeout_seconds if options else None,
+                retry=options.retry if options else None,
+            )
+        )
+        return _build_media_info(self.provider_name, media_id, response)
+
+    async def aget_media(
+        self,
+        media_id: str,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppMediaInfo:
+        response = await self._arequest(
+            HttpRequestOptions(
+                path=self._media_path(media_id),
+                method="GET",
+                query=self._media_query(),
+                headers=options.headers if options else None,
+                timeout_seconds=options.timeout_seconds if options else None,
+                retry=options.retry if options else None,
+            )
+        )
+        return _build_media_info(self.provider_name, media_id, response)
+
+    def delete_media(
+        self,
+        media_id: str,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppMediaDeleteResult:
+        response = self._request(
+            HttpRequestOptions(
+                path=self._media_path(media_id),
+                method="DELETE",
+                query=self._media_query(),
+                headers=options.headers if options else None,
+                timeout_seconds=options.timeout_seconds if options else None,
+                retry=options.retry if options else None,
+            )
+        )
+        return _build_media_delete_result(self.provider_name, media_id, response)
+
+    async def adelete_media(
+        self,
+        media_id: str,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppMediaDeleteResult:
+        response = await self._arequest(
+            HttpRequestOptions(
+                path=self._media_path(media_id),
+                method="DELETE",
+                query=self._media_query(),
+                headers=options.headers if options else None,
+                timeout_seconds=options.timeout_seconds if options else None,
+                retry=options.retry if options else None,
+            )
+        )
+        return _build_media_delete_result(self.provider_name, media_id, response)
+
     def parse_events(self, payload: Mapping[str, object]) -> tuple[DeliveryEvent, ...]:
         events: list[DeliveryEvent] = []
 
@@ -305,6 +520,15 @@ class MetaWhatsAppGateway:
 
     def _messages_path(self) -> str:
         return f"/{self.api_version}/{self.phone_number_id}/messages"
+
+    def _media_upload_path(self) -> str:
+        return f"/{self.api_version}/{self.phone_number_id}/media"
+
+    def _media_path(self, media_id: str) -> str:
+        return f"/{self.api_version}/{_require_text(media_id, 'media_id')}"
+
+    def _media_query(self) -> dict[str, str]:
+        return {"phone_number_id": self.phone_number_id}
 
     def _send_request(
         self,
@@ -476,6 +700,53 @@ class MetaWhatsAppGateway:
         return payload
 
 
+def _build_media_upload_result(
+    provider_name: str,
+    response: Mapping[str, object],
+) -> WhatsAppMediaUploadResult:
+    media_id = coerce_string(response.get("id"))
+    if media_id is None:
+        raise GatewayError(
+            "Meta media upload did not return a media id.",
+            provider=provider_name,
+            response_body=response,
+        )
+    return WhatsAppMediaUploadResult(
+        provider=provider_name,
+        media_id=media_id,
+        raw=response,
+    )
+
+
+def _build_media_info(
+    provider_name: str,
+    media_id: str,
+    response: Mapping[str, object],
+) -> WhatsAppMediaInfo:
+    return WhatsAppMediaInfo(
+        provider=provider_name,
+        media_id=coerce_string(response.get("id")) or media_id,
+        url=coerce_string(response.get("url")),
+        mime_type=coerce_string(response.get("mime_type")),
+        sha256=coerce_string(response.get("sha256")),
+        file_size=_coerce_int(response.get("file_size")),
+        raw=response,
+    )
+
+
+def _build_media_delete_result(
+    provider_name: str,
+    media_id: str,
+    response: Mapping[str, object],
+) -> WhatsAppMediaDeleteResult:
+    return WhatsAppMediaDeleteResult(
+        provider=provider_name,
+        media_id=media_id,
+        deleted=bool(response.get("success")),
+        raw=response,
+    )
+
+
 def _build_text_payload(request: WhatsAppTextRequest) -> dict[str, Any]:
     payload: dict[str, Any] = {"body": _require_text(request.text, "text")}
     if request.preview_url is not None:
@@ -593,6 +864,50 @@ def _build_interactive_payload(request: WhatsAppInteractiveRequest) -> dict[str,
             "sections": sections,
         }
 
+    return _build_message_payload(
+        recipient=request.recipient,
+        message_type="interactive",
+        message_body=interactive,
+        reply_to_message_id=request.reply_to_message_id,
+        provider_options=request.provider_options,
+    )
+
+
+def _build_catalog_message_payload(request: WhatsAppCatalogMessageRequest) -> dict[str, Any]:
+    interactive = _build_catalog_interactive_payload(request)
+    return _build_message_payload(
+        recipient=request.recipient,
+        message_type="interactive",
+        message_body=interactive,
+        reply_to_message_id=request.reply_to_message_id,
+        provider_options=request.provider_options,
+    )
+
+
+def _build_product_message_payload(request: WhatsAppProductMessageRequest) -> dict[str, Any]:
+    interactive = _build_product_interactive_payload(request)
+    return _build_message_payload(
+        recipient=request.recipient,
+        message_type="interactive",
+        message_body=interactive,
+        reply_to_message_id=request.reply_to_message_id,
+        provider_options=request.provider_options,
+    )
+
+
+def _build_product_list_payload(request: WhatsAppProductListRequest) -> dict[str, Any]:
+    interactive = _build_product_list_interactive_payload(request)
+    return _build_message_payload(
+        recipient=request.recipient,
+        message_type="interactive",
+        message_body=interactive,
+        reply_to_message_id=request.reply_to_message_id,
+        provider_options=request.provider_options,
+    )
+
+
+def _build_flow_message_payload(request: WhatsAppFlowMessageRequest) -> dict[str, Any]:
+    interactive = _build_flow_interactive_payload(request)
     return _build_message_payload(
         recipient=request.recipient,
         message_type="interactive",
@@ -804,6 +1119,151 @@ def _build_interactive_row(row: WhatsAppInteractiveRow) -> dict[str, Any]:
             "description": coerce_string(row.description),
         }
     )
+
+
+def _build_catalog_interactive_payload(request: WhatsAppCatalogMessageRequest) -> dict[str, Any]:
+    interactive = _build_common_interactive_payload(
+        interactive_type="catalog_message",
+        body_text=request.body_text,
+        header=request.header,
+        footer_text=request.footer_text,
+    )
+    action: dict[str, Any] = {"name": "catalog_message"}
+    if request.thumbnail_product_retailer_id is not None:
+        action["parameters"] = {
+            "thumbnail_product_retailer_id": _require_text(
+                request.thumbnail_product_retailer_id,
+                "thumbnail_product_retailer_id",
+            )
+        }
+    interactive["action"] = action
+    return interactive
+
+
+def _build_product_interactive_payload(request: WhatsAppProductMessageRequest) -> dict[str, Any]:
+    interactive = _build_common_interactive_payload(
+        interactive_type="product",
+        body_text=request.body_text,
+        header=None,
+        footer_text=request.footer_text,
+    )
+    interactive["action"] = {
+        "catalog_id": _require_text(request.catalog_id, "catalog_id"),
+        "product_retailer_id": _require_text(
+            request.product_retailer_id,
+            "product_retailer_id",
+        ),
+    }
+    return interactive
+
+
+def _build_product_list_interactive_payload(request: WhatsAppProductListRequest) -> dict[str, Any]:
+    sections = [_build_product_section(section) for section in request.sections]
+    if not sections:
+        raise ValueError("sections must not be empty for product_list interactive messages.")
+    if request.header is None:
+        raise ValueError("header is required for product_list interactive messages.")
+    interactive = _build_common_interactive_payload(
+        interactive_type="product_list",
+        body_text=request.body_text,
+        header=request.header,
+        footer_text=request.footer_text,
+    )
+    interactive["action"] = {
+        "catalog_id": _require_text(request.catalog_id, "catalog_id"),
+        "sections": sections,
+    }
+    return interactive
+
+
+def _build_flow_interactive_payload(request: WhatsAppFlowMessageRequest) -> dict[str, Any]:
+    interactive = _build_common_interactive_payload(
+        interactive_type="flow",
+        body_text=request.body_text,
+        header=request.header,
+        footer_text=request.footer_text,
+    )
+    parameters = _compact_mapping(
+        {
+            "flow_message_version": _require_text(
+                request.flow_message_version,
+                "flow_message_version",
+            ),
+            "flow_token": coerce_string(request.flow_token),
+            "flow_id": coerce_string(request.flow_id),
+            "flow_name": coerce_string(request.flow_name),
+            "flow_cta": _require_text(request.flow_cta, "flow_cta"),
+            "flow_action": _require_text(request.flow_action, "flow_action"),
+        }
+    )
+    if ("flow_id" in parameters) == ("flow_name" in parameters):
+        raise ValueError("flow messages require exactly one of flow_id or flow_name.")
+    if request.flow_action_payload:
+        parameters["flow_action_payload"] = dict(request.flow_action_payload)
+    interactive["action"] = {
+        "name": "flow",
+        "parameters": parameters,
+    }
+    return interactive
+
+
+def _build_common_interactive_payload(
+    *,
+    interactive_type: str,
+    body_text: str | None,
+    header: WhatsAppInteractiveHeader | None,
+    footer_text: str | None,
+) -> dict[str, Any]:
+    interactive: dict[str, Any] = {"type": interactive_type}
+    if body_text is not None:
+        interactive["body"] = {"text": _require_text(body_text, "body_text")}
+    if header is not None:
+        interactive["header"] = _build_interactive_header(header)
+    if footer_text is not None:
+        interactive["footer"] = {"text": footer_text}
+    return interactive
+
+
+def _build_product_section(section: WhatsAppProductSection) -> dict[str, Any]:
+    if not section.product_items:
+        raise ValueError("sections[].product_items must not be empty.")
+    return {
+        "title": _require_text(section.title, "sections[].title"),
+        "product_items": [_build_product_item(item) for item in section.product_items],
+    }
+
+
+def _build_product_item(item: WhatsAppProductItem) -> dict[str, Any]:
+    return {
+        "product_retailer_id": _require_text(
+            item.product_retailer_id,
+            "sections[].product_items[].product_retailer_id",
+        )
+    }
+
+
+def _build_media_upload_form(request: WhatsAppMediaUploadRequest) -> dict[str, str]:
+    payload: dict[str, str] = {}
+    for key, value in request.provider_options.items():
+        payload[key] = _require_text(coerce_string(value), f"provider_options[{key}]")
+    payload["messaging_product"] = "whatsapp"
+    payload["type"] = _require_text(request.mime_type, "mime_type")
+    return payload
+
+
+def _build_media_upload_files(
+    request: WhatsAppMediaUploadRequest,
+) -> dict[str, tuple[str, bytes, str]]:
+    content = bytes(request.content)
+    if not content:
+        raise ValueError("content must not be empty.")
+    return {
+        "file": (
+            _require_text(request.filename, "filename"),
+            content,
+            _require_text(request.mime_type, "mime_type"),
+        )
+    }
 
 
 def _iterate_value_objects(payload: Mapping[str, object]) -> tuple[dict[str, Any], ...]:
@@ -1104,6 +1564,20 @@ def _coerce_float(value: object) -> float | None:
         return None
     try:
         return float(text)
+    except ValueError:
+        return None
+
+
+def _coerce_int(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    text = coerce_string(value)
+    if text is None:
+        return None
+    try:
+        return int(text)
     except ValueError:
         return None
 

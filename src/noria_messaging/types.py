@@ -78,5 +78,7 @@ class HttpRequestOptions:
     headers: Mapping[str, str] | None = None
     query: Mapping[str, str | int | float | bool | None] | None = None
     body: object = None
+    form: Mapping[str, object] | None = None
+    files: Mapping[str, object] | None = None
     timeout_seconds: float | None = None
     retry: RetryPolicy | bool | None = None

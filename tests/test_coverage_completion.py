@@ -43,6 +43,15 @@ from noria_messaging.channels.sms.models import (
 from noria_messaging.channels.sms.service import AsyncSmsService, SmsService
 from noria_messaging.channels.whatsapp.gateways.meta import (
     MetaWhatsAppGateway,
+    _build_catalog_message_payload,
+    _build_flow_message_payload,
+    _build_media_delete_result,
+    _build_media_info,
+    _build_media_upload_files,
+    _build_media_upload_form,
+    _build_media_upload_result,
+    _build_product_list_payload,
+    _build_product_message_payload,
     _build_template_component,
     _build_template_parameter,
     _build_template_payload,
@@ -54,6 +63,7 @@ from noria_messaging.channels.whatsapp.gateways.meta import (
     _require_text as require_meta_text,
 )
 from noria_messaging.channels.whatsapp.models import (
+    WhatsAppCatalogMessageRequest,
     WhatsAppContact,
     WhatsAppContactAddress,
     WhatsAppContactEmail,
@@ -62,13 +72,22 @@ from noria_messaging.channels.whatsapp.models import (
     WhatsAppContactPhone,
     WhatsAppContactsRequest,
     WhatsAppContactUrl,
+    WhatsAppFlowMessageRequest,
     WhatsAppInboundMessage,
     WhatsAppInteractiveButton,
     WhatsAppInteractiveHeader,
     WhatsAppInteractiveRequest,
     WhatsAppInteractiveSection,
     WhatsAppLocationRequest,
+    WhatsAppMediaDeleteResult,
+    WhatsAppMediaInfo,
     WhatsAppMediaRequest,
+    WhatsAppMediaUploadRequest,
+    WhatsAppMediaUploadResult,
+    WhatsAppProductItem,
+    WhatsAppProductListRequest,
+    WhatsAppProductMessageRequest,
+    WhatsAppProductSection,
     WhatsAppReactionRequest,
     WhatsAppSendReceipt,
     WhatsAppSendResult,
@@ -641,6 +660,128 @@ class DummyWhatsAppGateway:
             ),
         )
 
+    def send_catalog(
+        self,
+        request: WhatsAppCatalogMessageRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult:
+        self.calls.append(("send_catalog", options))
+        return WhatsAppSendResult(
+            provider=self.provider_name,
+            accepted=True,
+            error_code=None,
+            error_description=None,
+            messages=(
+                WhatsAppSendReceipt(
+                    provider=self.provider_name,
+                    recipient=request.recipient,
+                    status="submitted",
+                    provider_message_id="wa-8",
+                ),
+            ),
+        )
+
+    def send_product(
+        self,
+        request: WhatsAppProductMessageRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult:
+        self.calls.append(("send_product", options))
+        return WhatsAppSendResult(
+            provider=self.provider_name,
+            accepted=True,
+            error_code=None,
+            error_description=None,
+            messages=(
+                WhatsAppSendReceipt(
+                    provider=self.provider_name,
+                    recipient=request.recipient,
+                    status="submitted",
+                    provider_message_id="wa-9",
+                ),
+            ),
+        )
+
+    def send_product_list(
+        self,
+        request: WhatsAppProductListRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult:
+        self.calls.append(("send_product_list", options))
+        return WhatsAppSendResult(
+            provider=self.provider_name,
+            accepted=True,
+            error_code=None,
+            error_description=None,
+            messages=(
+                WhatsAppSendReceipt(
+                    provider=self.provider_name,
+                    recipient=request.recipient,
+                    status="submitted",
+                    provider_message_id="wa-10",
+                ),
+            ),
+        )
+
+    def send_flow(
+        self,
+        request: WhatsAppFlowMessageRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult:
+        self.calls.append(("send_flow", options))
+        return WhatsAppSendResult(
+            provider=self.provider_name,
+            accepted=True,
+            error_code=None,
+            error_description=None,
+            messages=(
+                WhatsAppSendReceipt(
+                    provider=self.provider_name,
+                    recipient=request.recipient,
+                    status="submitted",
+                    provider_message_id="wa-11",
+                ),
+            ),
+        )
+
+    def upload_media(
+        self,
+        request: WhatsAppMediaUploadRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppMediaUploadResult:
+        self.calls.append(("upload_media", options))
+        return WhatsAppMediaUploadResult(
+            provider=self.provider_name,
+            media_id="media-upload-1",
+        )
+
+    def get_media(
+        self,
+        media_id: str,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppMediaInfo:
+        self.calls.append(("get_media", options))
+        return WhatsAppMediaInfo(provider=self.provider_name, media_id=media_id)
+
+    def delete_media(
+        self,
+        media_id: str,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppMediaDeleteResult:
+        self.calls.append(("delete_media", options))
+        return WhatsAppMediaDeleteResult(
+            provider=self.provider_name,
+            media_id=media_id,
+            deleted=True,
+        )
+
     def parse_events(self, payload: dict[str, object]) -> tuple[DeliveryEvent, ...]:
         self.calls.append(("parse_events", payload))
         return (
@@ -838,6 +979,128 @@ class DummyAsyncWhatsAppGateway:
                     provider_message_id="wa-async-7",
                 ),
             ),
+        )
+
+    async def asend_catalog(
+        self,
+        request: WhatsAppCatalogMessageRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult:
+        self.calls.append(("asend_catalog", options))
+        return WhatsAppSendResult(
+            provider=self.provider_name,
+            accepted=True,
+            error_code=None,
+            error_description=None,
+            messages=(
+                WhatsAppSendReceipt(
+                    provider=self.provider_name,
+                    recipient=request.recipient,
+                    status="submitted",
+                    provider_message_id="wa-async-8",
+                ),
+            ),
+        )
+
+    async def asend_product(
+        self,
+        request: WhatsAppProductMessageRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult:
+        self.calls.append(("asend_product", options))
+        return WhatsAppSendResult(
+            provider=self.provider_name,
+            accepted=True,
+            error_code=None,
+            error_description=None,
+            messages=(
+                WhatsAppSendReceipt(
+                    provider=self.provider_name,
+                    recipient=request.recipient,
+                    status="submitted",
+                    provider_message_id="wa-async-9",
+                ),
+            ),
+        )
+
+    async def asend_product_list(
+        self,
+        request: WhatsAppProductListRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult:
+        self.calls.append(("asend_product_list", options))
+        return WhatsAppSendResult(
+            provider=self.provider_name,
+            accepted=True,
+            error_code=None,
+            error_description=None,
+            messages=(
+                WhatsAppSendReceipt(
+                    provider=self.provider_name,
+                    recipient=request.recipient,
+                    status="submitted",
+                    provider_message_id="wa-async-10",
+                ),
+            ),
+        )
+
+    async def asend_flow(
+        self,
+        request: WhatsAppFlowMessageRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppSendResult:
+        self.calls.append(("asend_flow", options))
+        return WhatsAppSendResult(
+            provider=self.provider_name,
+            accepted=True,
+            error_code=None,
+            error_description=None,
+            messages=(
+                WhatsAppSendReceipt(
+                    provider=self.provider_name,
+                    recipient=request.recipient,
+                    status="submitted",
+                    provider_message_id="wa-async-11",
+                ),
+            ),
+        )
+
+    async def aupload_media(
+        self,
+        request: WhatsAppMediaUploadRequest,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppMediaUploadResult:
+        self.calls.append(("aupload_media", options))
+        return WhatsAppMediaUploadResult(
+            provider=self.provider_name,
+            media_id="media-upload-async-1",
+        )
+
+    async def aget_media(
+        self,
+        media_id: str,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppMediaInfo:
+        self.calls.append(("aget_media", options))
+        return WhatsAppMediaInfo(provider=self.provider_name, media_id=media_id)
+
+    async def adelete_media(
+        self,
+        media_id: str,
+        *,
+        options: RequestOptions | None = None,
+    ) -> WhatsAppMediaDeleteResult:
+        self.calls.append(("adelete_media", options))
+        return WhatsAppMediaDeleteResult(
+            provider=self.provider_name,
+            media_id=media_id,
+            deleted=True,
         )
 
     def parse_events(self, payload: dict[str, object]) -> tuple[DeliveryEvent, ...]:
@@ -1085,6 +1348,8 @@ def test_http_helper_functions_cover_retry_resolution_and_request_building() -> 
         headers={"X-Test": "1"},
         query={"page": 1, "skip": None},
         body="hello",
+        form=None,
+        files=None,
         timeout_seconds=5.0,
     )
     assert text_kwargs["params"] == {"page": 1}
@@ -1097,6 +1362,8 @@ def test_http_helper_functions_cover_retry_resolution_and_request_building() -> 
         headers={"X-Test": "1"},
         query=None,
         body={"message": "hello"},
+        form=None,
+        files=None,
         timeout_seconds=None,
     )
     assert json_kwargs["json"] == {"message": "hello"}
@@ -1108,9 +1375,25 @@ def test_http_helper_functions_cover_retry_resolution_and_request_building() -> 
         headers={"content-type": "application/xml"},
         query=None,
         body=b"<xml />",
+        form=None,
+        files=None,
         timeout_seconds=None,
     )
     assert preserved_headers["headers"] == {"content-type": "application/xml"}
+
+    multipart_kwargs = _build_request_kwargs(
+        method="POST",
+        url="https://api.test/media",
+        headers={"Content-Type": "application/json", "Authorization": "Bearer token"},
+        query=None,
+        body=None,
+        form={"messaging_product": "whatsapp"},
+        files={"file": ("poster.png", b"img", "image/png")},
+        timeout_seconds=10.0,
+    )
+    assert multipart_kwargs["data"] == {"messaging_product": "whatsapp"}
+    assert multipart_kwargs["files"]["file"] == ("poster.png", b"img", "image/png")
+    assert multipart_kwargs["headers"] == {"Authorization": "Bearer token"}
 
 
 def test_http_client_sync_paths_cover_retries_hooks_and_context_manager(
@@ -1566,6 +1849,37 @@ def test_whatsapp_services_models_and_configuration_errors() -> None:
         body_text="Choose one",
         buttons=(WhatsAppInteractiveButton(identifier="opt-1", title="Option 1"),),
     )
+    catalog_request = WhatsAppCatalogMessageRequest(
+        recipient="254700000012",
+        body_text="Browse",
+        thumbnail_product_retailer_id="sku-1",
+    )
+    product_request = WhatsAppProductMessageRequest(
+        recipient="254700000012",
+        catalog_id="catalog-1",
+        product_retailer_id="sku-1",
+    )
+    product_list_request = WhatsAppProductListRequest(
+        recipient="254700000012",
+        catalog_id="catalog-1",
+        header=WhatsAppInteractiveHeader(type="text", text="Store"),
+        sections=(
+            WhatsAppProductSection(
+                title="Popular",
+                product_items=(WhatsAppProductItem(product_retailer_id="sku-1"),),
+            ),
+        ),
+    )
+    flow_request = WhatsAppFlowMessageRequest(
+        recipient="254700000012",
+        flow_id="flow-1",
+        flow_cta="Open flow",
+    )
+    media_upload_request = WhatsAppMediaUploadRequest(
+        filename="poster.png",
+        content=b"poster",
+        mime_type="image/png",
+    )
     options = RequestOptions(headers={"X-Test": "1"})
 
     gateway = DummyWhatsAppGateway()
@@ -1579,6 +1893,13 @@ def test_whatsapp_services_models_and_configuration_errors() -> None:
     assert service.send_contacts(contacts_request, options=options).submitted_count == 1
     assert service.send_reaction(reaction_request, options=options).submitted_count == 1
     assert service.send_interactive(interactive_request, options=options).submitted_count == 1
+    assert service.send_catalog(catalog_request, options=options).submitted_count == 1
+    assert service.send_product(product_request, options=options).submitted_count == 1
+    assert service.send_product_list(product_list_request, options=options).submitted_count == 1
+    assert service.send_flow(flow_request, options=options).submitted_count == 1
+    assert service.upload_media(media_upload_request, options=options).media_id == "media-upload-1"
+    assert service.get_media("media-1", options=options).media_id == "media-1"
+    assert service.delete_media("media-1", options=options).deleted is True
     assert service.parse_events({"entry": []})[0].provider_message_id == "wa-evt-1"
     assert service.parse_event({"entry": []}).provider_message_id == "wa-evt-1"
     assert service.parse_inbound_messages({"entry": []})[0].message_id == "wamid.inbound"
@@ -1668,6 +1989,36 @@ def test_async_whatsapp_services_cover_delegation_and_configuration_errors() -> 
             body_text="Pick",
             buttons=(WhatsAppInteractiveButton(identifier="async-1", title="Async 1"),),
         )
+        catalog_request = WhatsAppCatalogMessageRequest(
+            recipient="254700000014",
+            body_text="Browse async",
+        )
+        product_request = WhatsAppProductMessageRequest(
+            recipient="254700000014",
+            catalog_id="catalog-1",
+            product_retailer_id="sku-1",
+        )
+        product_list_request = WhatsAppProductListRequest(
+            recipient="254700000014",
+            catalog_id="catalog-1",
+            header=WhatsAppInteractiveHeader(type="text", text="Async Store"),
+            sections=(
+                WhatsAppProductSection(
+                    title="Featured",
+                    product_items=(WhatsAppProductItem(product_retailer_id="sku-1"),),
+                ),
+            ),
+        )
+        flow_request = WhatsAppFlowMessageRequest(
+            recipient="254700000014",
+            flow_name="lead_capture",
+            flow_cta="Open async flow",
+        )
+        media_upload_request = WhatsAppMediaUploadRequest(
+            filename="async.pdf",
+            content=b"pdf",
+            mime_type="application/pdf",
+        )
         options = RequestOptions(timeout_seconds=3.0)
 
         gateway = DummyAsyncWhatsAppGateway()
@@ -1683,6 +2034,19 @@ def test_async_whatsapp_services_cover_delegation_and_configuration_errors() -> 
         assert (
             await service.send_interactive(interactive_request, options=options)
         ).submitted_count == 1
+        assert (await service.send_catalog(catalog_request, options=options)).submitted_count == 1
+        assert (await service.send_product(product_request, options=options)).submitted_count == 1
+        assert (
+            await service.send_product_list(product_list_request, options=options)
+        ).submitted_count == 1
+        assert (await service.send_flow(flow_request, options=options)).submitted_count == 1
+        assert (
+            await service.upload_media(media_upload_request, options=options)
+        ).media_id == "media-upload-async-1"
+        assert (await service.get_media("media-async-1", options=options)).media_id == (
+            "media-async-1"
+        )
+        assert (await service.delete_media("media-async-1", options=options)).deleted is True
         assert service.parse_events({})[0].provider_message_id == "wa-evt-async-1"
         assert service.parse_event({}).provider_message_id == "wa-evt-async-1"
         assert service.parse_inbound_messages({})[0].message_id == "wamid.inbound.async"
@@ -2020,6 +2384,46 @@ def test_meta_gateway_sync_async_helpers_and_parser_paths() -> None:
                         "messages": [{"id": "wamid.8", "message_status": "accepted"}],
                     },
                 ),
+                make_response(
+                    200,
+                    {
+                        "contacts": [{"wa_id": "254700000021"}],
+                        "messages": [{"id": "wamid.9", "message_status": "accepted"}],
+                    },
+                ),
+                make_response(
+                    200,
+                    {
+                        "contacts": [{"wa_id": "254700000021"}],
+                        "messages": [{"id": "wamid.10", "message_status": "accepted"}],
+                    },
+                ),
+                make_response(
+                    200,
+                    {
+                        "contacts": [{"wa_id": "254700000021"}],
+                        "messages": [{"id": "wamid.11", "message_status": "accepted"}],
+                    },
+                ),
+                make_response(
+                    200,
+                    {
+                        "contacts": [{"wa_id": "254700000021"}],
+                        "messages": [{"id": "wamid.12", "message_status": "accepted"}],
+                    },
+                ),
+                make_response(200, {"id": "media.async.1"}),
+                make_response(
+                    200,
+                    {
+                        "id": "media.async.1",
+                        "url": "https://lookaside.fbsbx.com/media/async-1",
+                        "mime_type": "image/png",
+                        "sha256": "async-sha",
+                        "file_size": "512",
+                    },
+                ),
+                make_response(200, {"success": True}),
             ]
         )
         gateway = MetaWhatsAppGateway(
@@ -2111,7 +2515,62 @@ def test_meta_gateway_sync_async_helpers_and_parser_paths() -> None:
                 )
             )
         ).messages[0].provider_message_id == "wamid.8"
+        assert (
+            await gateway.asend_catalog(
+                WhatsAppCatalogMessageRequest(
+                    recipient="254700000021",
+                    body_text="Browse async",
+                )
+            )
+        ).messages[0].provider_message_id == "wamid.9"
+        assert (
+            await gateway.asend_product(
+                WhatsAppProductMessageRequest(
+                    recipient="254700000021",
+                    catalog_id="catalog-1",
+                    product_retailer_id="sku-1",
+                )
+            )
+        ).messages[0].provider_message_id == "wamid.10"
+        assert (
+            await gateway.asend_product_list(
+                WhatsAppProductListRequest(
+                    recipient="254700000021",
+                    catalog_id="catalog-1",
+                    header=WhatsAppInteractiveHeader(type="text", text="Store"),
+                    sections=(
+                        WhatsAppProductSection(
+                            title="Popular",
+                            product_items=(WhatsAppProductItem(product_retailer_id="sku-1"),),
+                        ),
+                    ),
+                )
+            )
+        ).messages[0].provider_message_id == "wamid.11"
+        assert (
+            await gateway.asend_flow(
+                WhatsAppFlowMessageRequest(
+                    recipient="254700000021",
+                    flow_name="lead_capture",
+                    flow_cta="Open flow",
+                )
+            )
+        ).messages[0].provider_message_id == "wamid.12"
+        assert (
+            await gateway.aupload_media(
+                WhatsAppMediaUploadRequest(
+                    filename="poster.png",
+                    content=b"png",
+                    mime_type="image/png",
+                )
+            )
+        ).media_id == "media.async.1"
+        assert (await gateway.aget_media("media.async.1")).file_size == 512
+        assert (await gateway.adelete_media("media.async.1")).deleted is True
         assert gateway._messages_path() == f"/{gateway.api_version}/12345/messages"
+        assert gateway._media_upload_path() == f"/{gateway.api_version}/12345/media"
+        assert gateway._media_path("media.async.1") == f"/{gateway.api_version}/media.async.1"
+        assert gateway._media_query() == {"phone_number_id": "12345"}
 
         events = gateway.parse_events(
             {
@@ -2391,6 +2850,143 @@ def test_meta_gateway_builder_and_inbound_edge_paths() -> None:
         meta_gateway_module._build_interactive_section(
             WhatsAppInteractiveSection(rows=(), title="Empty")
         )
+    assert _build_catalog_message_payload(
+        WhatsAppCatalogMessageRequest(
+            recipient="254700000031",
+            body_text="Browse",
+            footer_text="Footer copy",
+            thumbnail_product_retailer_id="sku-1",
+            provider_options={"biz_opaque_callback_data": "cb-catalog"},
+        )
+    )["interactive"]["action"] == {
+        "name": "catalog_message",
+        "parameters": {"thumbnail_product_retailer_id": "sku-1"},
+    }
+    assert _build_catalog_message_payload(
+        WhatsAppCatalogMessageRequest(
+            recipient="254700000031",
+            body_text="Browse",
+            footer_text="Footer copy",
+        )
+    )["interactive"]["footer"] == {"text": "Footer copy"}
+    assert _build_product_message_payload(
+        WhatsAppProductMessageRequest(
+            recipient="254700000031",
+            catalog_id="catalog-1",
+            product_retailer_id="sku-1",
+        )
+    )["interactive"]["action"] == {
+        "catalog_id": "catalog-1",
+        "product_retailer_id": "sku-1",
+    }
+    assert _build_product_list_payload(
+        WhatsAppProductListRequest(
+            recipient="254700000031",
+            catalog_id="catalog-1",
+            header=WhatsAppInteractiveHeader(type="text", text="Store"),
+            sections=(
+                WhatsAppProductSection(
+                    title="Popular",
+                    product_items=(WhatsAppProductItem(product_retailer_id="sku-1"),),
+                ),
+            ),
+        )
+    )["interactive"]["action"]["sections"] == [
+        {
+            "title": "Popular",
+            "product_items": [{"product_retailer_id": "sku-1"}],
+        }
+    ]
+    assert _build_flow_message_payload(
+        WhatsAppFlowMessageRequest(
+            recipient="254700000031",
+            flow_name="lead_capture",
+            flow_cta="Open flow",
+            flow_action_payload={"screen": "DETAILS"},
+        )
+    )["interactive"]["action"] == {
+        "name": "flow",
+        "parameters": {
+            "flow_message_version": "3",
+            "flow_name": "lead_capture",
+            "flow_cta": "Open flow",
+            "flow_action": "navigate",
+            "flow_action_payload": {"screen": "DETAILS"},
+        },
+    }
+    assert _build_media_upload_form(
+        WhatsAppMediaUploadRequest(
+            filename="poster.png",
+            content=b"poster",
+            mime_type="image/png",
+            provider_options={"biz_opaque_callback_data": "cb-media"},
+        )
+    ) == {
+        "biz_opaque_callback_data": "cb-media",
+        "messaging_product": "whatsapp",
+        "type": "image/png",
+    }
+    assert _build_media_upload_files(
+        WhatsAppMediaUploadRequest(
+            filename="poster.png",
+            content=memoryview(b"poster"),
+            mime_type="image/png",
+        )
+    ) == {"file": ("poster.png", b"poster", "image/png")}
+    assert _build_media_upload_result("meta", {"id": "media-1"}).media_id == "media-1"
+    assert _build_media_info("meta", "media-1", {"file_size": "12"}).file_size == 12
+    assert _build_media_delete_result("meta", "media-1", {"success": 1}).deleted is True
+    with pytest.raises(ValueError, match="header is required"):
+        _build_product_list_payload(
+            WhatsAppProductListRequest(
+                recipient="254700000031",
+                catalog_id="catalog-1",
+                header=None,  # type: ignore[arg-type]
+                sections=(
+                    WhatsAppProductSection(
+                        title="Popular",
+                        product_items=(WhatsAppProductItem(product_retailer_id="sku-1"),),
+                    ),
+                ),
+            )
+        )
+    with pytest.raises(ValueError, match="sections must not be empty"):
+        _build_product_list_payload(
+            WhatsAppProductListRequest(
+                recipient="254700000031",
+                catalog_id="catalog-1",
+                header=WhatsAppInteractiveHeader(type="text", text="Store"),
+                sections=(),
+            )
+        )
+    with pytest.raises(ValueError, match="sections\\[\\]\\.product_items must not be empty"):
+        _build_product_list_payload(
+            WhatsAppProductListRequest(
+                recipient="254700000031",
+                catalog_id="catalog-1",
+                header=WhatsAppInteractiveHeader(type="text", text="Store"),
+                sections=(WhatsAppProductSection(title="Popular", product_items=()),),
+            )
+        )
+    with pytest.raises(ValueError, match="exactly one of flow_id or flow_name"):
+        _build_flow_message_payload(
+            WhatsAppFlowMessageRequest(
+                recipient="254700000031",
+                flow_id="flow-1",
+                flow_name="lead_capture",
+                flow_cta="Open flow",
+            )
+        )
+    with pytest.raises(ValueError, match="content must not be empty"):
+        _build_media_upload_files(
+            WhatsAppMediaUploadRequest(
+                filename="poster.png",
+                content=b"",
+                mime_type="image/png",
+            )
+        )
+    with pytest.raises(GatewayError, match="media id"):
+        _build_media_upload_result("meta", {})
 
     assert (
         meta_gateway_module._build_inbound_message(
@@ -2557,6 +3153,11 @@ def test_meta_gateway_builder_and_inbound_edge_paths() -> None:
     assert meta_gateway_module._coerce_float(5) == 5.0
     assert meta_gateway_module._coerce_float(None) is None
     assert meta_gateway_module._coerce_float("not-a-number") is None
+    assert meta_gateway_module._coerce_int("12") == 12
+    assert meta_gateway_module._coerce_int(9) == 9
+    assert meta_gateway_module._coerce_int(None) is None
+    assert meta_gateway_module._coerce_int("bad-int") is None
+    assert meta_gateway_module._coerce_int(True) is None
 
 
 def test_webhook_helpers_cover_fastapi_flask_and_onfon_paths() -> None:

@@ -25,17 +25,25 @@ from noria_messaging import (
     SmsMessage,
     SmsSendRequest,
     SmsTemplateUpsertRequest,
+    WhatsAppCatalogMessageRequest,
     WhatsAppContact,
     WhatsAppContactAddress,
     WhatsAppContactName,
     WhatsAppContactPhone,
     WhatsAppContactsRequest,
+    WhatsAppFlowMessageRequest,
     WhatsAppInteractiveHeader,
     WhatsAppInteractiveRequest,
     WhatsAppInteractiveRow,
     WhatsAppInteractiveSection,
     WhatsAppLocationRequest,
+    WhatsAppMediaInfo,
     WhatsAppMediaRequest,
+    WhatsAppMediaUploadRequest,
+    WhatsAppProductItem,
+    WhatsAppProductListRequest,
+    WhatsAppProductMessageRequest,
+    WhatsAppProductSection,
     WhatsAppReactionRequest,
     WhatsAppTemplateComponent,
     WhatsAppTemplateParameter,
@@ -751,6 +759,168 @@ def test_async_messaging_client_sends_whatsapp_media_messages() -> None:
         assert async_client.closed is False
 
     asyncio.run(run())
+
+
+def test_meta_whatsapp_gateway_supports_commerce_flow_and_media_helpers() -> None:
+    client = FakeSyncHttpClient(
+        responses=[
+            make_response(
+                200,
+                {
+                    "contacts": [{"wa_id": "254712345678"}],
+                    "messages": [{"id": "wamid.catalog", "message_status": "accepted"}],
+                },
+            ),
+            make_response(
+                200,
+                {
+                    "contacts": [{"wa_id": "254712345678"}],
+                    "messages": [{"id": "wamid.product", "message_status": "accepted"}],
+                },
+            ),
+            make_response(
+                200,
+                {
+                    "contacts": [{"wa_id": "254712345678"}],
+                    "messages": [{"id": "wamid.product-list", "message_status": "accepted"}],
+                },
+            ),
+            make_response(
+                200,
+                {
+                    "contacts": [{"wa_id": "254712345678"}],
+                    "messages": [{"id": "wamid.flow", "message_status": "accepted"}],
+                },
+            ),
+            make_response(200, {"id": "media-upload-1"}),
+            make_response(
+                200,
+                {
+                    "id": "media-upload-1",
+                    "url": "https://lookaside.fbsbx.com/media/1",
+                    "mime_type": "image/png",
+                    "sha256": "abc123",
+                    "file_size": "2048",
+                },
+            ),
+            make_response(200, {"success": True}),
+        ]
+    )
+    gateway = MetaWhatsAppGateway(
+        access_token="meta-token",
+        phone_number_id="123456789",
+        client=client,
+    )
+
+    catalog = gateway.send_catalog(
+        WhatsAppCatalogMessageRequest(
+            recipient="254712345678",
+            body_text="Browse the latest collection",
+            thumbnail_product_retailer_id="sku-1",
+        )
+    )
+    product = gateway.send_product(
+        WhatsAppProductMessageRequest(
+            recipient="254712345678",
+            catalog_id="catalog-1",
+            product_retailer_id="sku-1",
+            body_text="Featured product",
+        )
+    )
+    product_list = gateway.send_product_list(
+        WhatsAppProductListRequest(
+            recipient="254712345678",
+            catalog_id="catalog-1",
+            header=WhatsAppInteractiveHeader(type="text", text="Store"),
+            body_text="Choose a bundle",
+            sections=(
+                WhatsAppProductSection(
+                    title="Popular",
+                    product_items=(
+                        WhatsAppProductItem(product_retailer_id="sku-1"),
+                        WhatsAppProductItem(product_retailer_id="sku-2"),
+                    ),
+                ),
+            ),
+        )
+    )
+    flow = gateway.send_flow(
+        WhatsAppFlowMessageRequest(
+            recipient="254712345678",
+            body_text="Complete onboarding",
+            flow_id="flow-123",
+            flow_cta="Open flow",
+            flow_token="flow-token",
+            flow_action_payload={"screen": "DETAILS", "data": {"customer_id": "cust-1"}},
+        )
+    )
+    upload = gateway.upload_media(
+        WhatsAppMediaUploadRequest(
+            filename="poster.png",
+            content=b"image-bytes",
+            mime_type="image/png",
+        )
+    )
+    media = gateway.get_media("media-upload-1")
+    deleted = gateway.delete_media("media-upload-1")
+
+    assert catalog.messages[0].provider_message_id == "wamid.catalog"
+    assert product.messages[0].provider_message_id == "wamid.product"
+    assert product_list.messages[0].provider_message_id == "wamid.product-list"
+    assert flow.messages[0].provider_message_id == "wamid.flow"
+    assert upload.media_id == "media-upload-1"
+    assert media == WhatsAppMediaInfo(
+        provider="meta",
+        media_id="media-upload-1",
+        url="https://lookaside.fbsbx.com/media/1",
+        mime_type="image/png",
+        sha256="abc123",
+        file_size=2048,
+        raw={
+            "id": "media-upload-1",
+            "url": "https://lookaside.fbsbx.com/media/1",
+            "mime_type": "image/png",
+            "sha256": "abc123",
+            "file_size": "2048",
+        },
+    )
+    assert deleted.deleted is True
+
+    assert client.calls[0]["json"]["interactive"]["action"] == {
+        "name": "catalog_message",
+        "parameters": {"thumbnail_product_retailer_id": "sku-1"},
+    }
+    assert client.calls[1]["json"]["interactive"]["action"] == {
+        "catalog_id": "catalog-1",
+        "product_retailer_id": "sku-1",
+    }
+    assert client.calls[2]["json"]["interactive"]["action"]["sections"][0]["product_items"] == [
+        {"product_retailer_id": "sku-1"},
+        {"product_retailer_id": "sku-2"},
+    ]
+    assert client.calls[3]["json"]["interactive"]["action"] == {
+        "name": "flow",
+        "parameters": {
+            "flow_message_version": "3",
+            "flow_token": "flow-token",
+            "flow_id": "flow-123",
+            "flow_cta": "Open flow",
+            "flow_action": "navigate",
+            "flow_action_payload": {
+                "screen": "DETAILS",
+                "data": {"customer_id": "cust-1"},
+            },
+        },
+    }
+    assert client.calls[4]["url"] == f"https://graph.facebook.com/{META_GRAPH_API_VERSION}/123456789/media"
+    assert client.calls[4]["data"] == {
+        "messaging_product": "whatsapp",
+        "type": "image/png",
+    }
+    assert client.calls[4]["files"]["file"] == ("poster.png", b"image-bytes", "image/png")
+    assert "Content-Type" not in client.calls[4]["headers"]
+    assert client.calls[5]["params"] == {"phone_number_id": "123456789"}
+    assert client.calls[6]["method"] == "DELETE"
 
 
 def test_meta_whatsapp_gateway_parses_status_events() -> None:
